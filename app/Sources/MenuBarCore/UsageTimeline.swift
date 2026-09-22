@@ -57,6 +57,29 @@ public struct UsageTimeline: Decodable, Equatable, Sendable {
 }
 
 public extension UsageTimeline {
+    private enum CodingKeys: String, CodingKey {
+        case start, end, bucketSeconds, buckets, metric, aggregation, grouping
+        case series, availableModels, missingMeasurements, truncated, appliedFilters
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        start = try values.decode(Double.self, forKey: .start)
+        end = try values.decode(Double.self, forKey: .end)
+        bucketSeconds = try values.decode(Int.self, forKey: .bucketSeconds)
+        buckets = try values.decode(Int.self, forKey: .buckets)
+        metric = try values.decode(String.self, forKey: .metric)
+        aggregation = try values.decode(String.self, forKey: .aggregation)
+        grouping = try values.decode(String.self, forKey: .grouping)
+        series = try values.decode([TimelineSeries].self, forKey: .series)
+        availableModels = try values.decode([String].self, forKey: .availableModels)
+        missingMeasurements = try values.decode(Int.self, forKey: .missingMeasurements)
+        truncated = try values.decodeIfPresent(Bool.self, forKey: .truncated)
+        // Optional metadata cannot discard valid chart data. An unusable receipt
+        // takes the same conservative projection path as an older server.
+        appliedFilters = try? values.decode(TimelineAppliedFilters.self, forKey: .appliedFilters)
+    }
+
     func projected(_ settings: CompanionSettings) -> UsageTimeline {
         let identity: (String) -> Data = { Data($0.utf8) }
         let hidden = Set(settings.hiddenProviders.map(identity))

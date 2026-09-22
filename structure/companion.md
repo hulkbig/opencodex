@@ -50,3 +50,9 @@ to clear the title. The native window/transport boundary remains in [Desktop she
 Behavior coverage lives in `tests/usage/usage-timeline.test.ts`,
 `tests/server/companion-settings.test.ts`, the GUI companion utility/data tests, Rust inline tests,
 and `app/Sources/MenuBarCoreTests/TransportSuite.swift` and `WidgetSnapshotSuite.swift`.
+
+Malformed optional timeline filter receipts use the older-server fallback without discarding valid series. Active filters omit untrusted folded totals and mark the projection incomplete.
+
+If display settings cannot be read, the native panel keeps independently fetched account limits visible and reports the settings error. Usage sections remain hidden until their display preferences are available; an explicit `showAccounts: false` is honored when settings are readable.
+
+`src/usage/ledger-retention.ts` closes its source reader after copying and before publishing the retained file, allowing replacement on Windows. The final pathname revision check still refuses replacement after a concurrent append or file replacement.

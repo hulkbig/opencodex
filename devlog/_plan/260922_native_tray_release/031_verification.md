@@ -30,3 +30,28 @@ The exact-head PR checks, remaining read-only review, merged-dev checks, stable/
 publication, registry tags/assets and final installation evidence remain outstanding. No release
 or universal no-regression claim is made by this checkpoint. Follow the user-directed hosted-only
 verification path and retain every failed, missing, cancelled or timed-out job as unresolved.
+
+## Hosted follow-up at 9233d4f3a3
+
+PR #5490 targets dev. Its Cross-platform CI run 35692642447 completed the macOS
+widget/bundle and desktop-shell jobs successfully. Service-lifecycle checks passed on Linux,
+macOS and Windows. The full workflow is not green: Linux shard 2 failed two sandbox-fixture
+cases because the temporary executable inherited a writable ancestor. Manual all-platform
+run 35692726962 also exposed Windows failures, including retention publication while its
+source reader remained open. Fixes and unrun regression cases follow in the next commit;
+that commit requires fresh hosted evidence. No local tests were run for these repairs.
+
+The Swift optional-filter decoder and malformed-receipt fixtures received a read-only Sol
+PASS. The settings-unavailable account section intentionally retains independently fetched
+account limits, matching the web/default behavior, while reporting the unavailable settings.
+Other baseline and security reviews remain separate from these two findings.
+
+The next hosted candidate also narrows the Windows scheduler fixture's synthetic system path,
+awaits server/child cleanup in vision and outbound-proxy cases, and waits for the real native-main
+startup gate before asserting discovery rows. Proxy fixture phase diagnostics preserve a bounded
+failure if transport rather than teardown remains stuck. The Linux fixture owns a disposable
+executable beside the trusted interpreter instead of changing shared-file permissions.
+
+Replacement ordering and CA startup repairs have source-review follow-ups; their new regression
+cases are committed for hosted execution only. Final read-only reviews and exact-head hosted
+results remain required before integration.

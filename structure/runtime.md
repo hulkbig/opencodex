@@ -239,7 +239,7 @@ through `src/server/index/claude-intercept-lifecycle.ts` (fire-and-forget start,
 the ingress decision, `stop` joined into the listener shutdown) from `src/claude/intercept/runtime.ts`: a loopback HTTP CONNECT proxy (`src/claude/intercept/connect-proxy.ts`)
 and a loopback TLS listener (`src/claude/intercept/listener.ts`) that presents a leaf for
 `api.anthropic.com` signed by a per-install authority (`src/claude/intercept/local-ca.ts`, persisted
-under `<OPENCODEX_HOME>/claude-intercept/` with a 0600 key; never installed into an OS trust store).
+under `<OPENCODEX_HOME>/claude-intercept/` with a 0600 key; never installed into an OS trust store). CA reads and pair publication share a directory-bound SQLite lease; persisted certificates must match their private key and verify as a self-signed CA. Startup retries only lease contention with bounded asynchronous backoff before binding either listener.
 Claude Code reaches the pair through `HTTPS_PROXY` plus `NODE_EXTRA_CA_CERTS` in its settings env
 (`src/claude/intercept/settings.ts`), so no `ANTHROPIC_BASE_URL` rewrite is involved and the client
 still believes it talks to Anthropic. The proxy splices `CONNECT api.anthropic.com:443` onto the TLS

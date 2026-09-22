@@ -31,7 +31,12 @@ function fixture() {
   return { root, workspace, outside };
 }
 
-function privateBubblewrapFixture(root: string): string {
+function privateBubblewrapFixture(): string {
+  // The production guard checks every ancestor, so tmpdir's shared /tmp parent
+  // is deliberately ineligible. Own a disposable sibling under the trusted
+  // interpreter directory without chmod'ing the interpreter or shared parents.
+  const root = mkdtempSync(join(dirname(realpathSync(process.execPath)), "ocx-bwrap-fixture-"));
+  roots.push(root);
   const path = join(root, "bwrap");
   writeFileSync(path, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
   return path;
@@ -89,7 +94,7 @@ describe("remote workspace Linux command sandbox", () => {
 
   test("builds a minimal bubblewrap argv with one writable workspace", () => {
     const state = fixture();
-    const bubblewrapPath = privateBubblewrapFixture(state.root);
+    const bubblewrapPath = privateBubblewrapFixture();
     const argv = linuxRemoteWorkspaceCommandArgv({
       command: ["/bin/sh", "-lc", "pwd"],
       root: state.workspace,
@@ -298,7 +303,7 @@ describe("remote workspace Linux command sandbox", () => {
       timeoutMs: 1_000,
       maxOutputBytes: 4_096,
     }, {
-      bubblewrapPath: privateBubblewrapFixture(state.root),
+      bubblewrapPath: privateBubblewrapFixture(),
       toolchainRoots: [substituted],
     })).toThrow("remain a real directory");
   });

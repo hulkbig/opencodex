@@ -27,6 +27,7 @@ import { OPENAI_CODEX_PROVIDER_ID } from "../../providers/openai-tiers";
 import { inspectDesktop3pConfigLibrary, removeDesktop3pStandardPivot, writeDesktop3pConfig } from "../../claude/desktop-3p";
 import {
   applyDesktopFirstParty,
+  captureDesktopFirstPartyRollback,
   inspectDesktopFirstParty,
   recordClaudeDesktopMode,
   removeDesktopFirstParty,
@@ -689,15 +690,25 @@ async function handleClaudeDesktopToggle(ctx: ManagementContext): Promise<Respon
     }
 
     if (resolveClaudeDesktopApplyMode(current) === "first-party") {
-      // Same contract as POST /api/claude-desktop/apply: an owned gateway profile left on disk
-      // is pivoted to standard first, so the two modes are never active together.
+      const rollback = captureDesktopFirstPartyRollback(current);
+      const applied = applyDesktopFirstParty(current);
+      if (!applied.ok) {
+        const reason = applied.reason === "foreign_env" || applied.reason === "intercept_disabled" ? applied.reason : "write_failed";
+        return postCommitRefusal(applied.reason === "unreadable" || applied.reason === "ca_unavailable" ? 500 : 409, "claude-desktop", reason,
+          firstPartyRefusalMessage(applied.reason, applied.path), { desiredEnabled });
+      }
       const library = inspectDesktop3pConfigLibrary({ appliedFingerprint: fingerprint });
       let gatewayRemoved = false;
       if (library.kind === "gateway_ours" || library.kind === "gateway_drifted") {
         const removed = (ctx.deps.removeDesktop3pStandardPivot ?? removeDesktop3pStandardPivot)({ appliedFingerprint: fingerprint, replaceWhileEnabled: true });
+        if (!removed.ok && !removed.changed && applied.changed && !rollback()) {
+          return postCommitRefusal(500, "claude-desktop", "write_failed",
+            "Gateway cleanup and first-party settings rollback did not complete.", { desiredEnabled });
+        }
+        if (!removed.ok && removed.changed) persistDesktopModeMarker("first-party");
         if (removed.kind === "cleanup_incomplete") {
           return postCommitRefusal(500, "claude-desktop", "cleanup_incomplete",
-            "Claude Desktop now points at standard mode, but gateway credential cleanup is incomplete; first-party env was not applied.",
+            "Claude Desktop now points at standard mode, but gateway credential cleanup is incomplete; the first-party connection remains active.",
             { desiredEnabled, residualPaths: removed.residualPaths ?? [] });
         }
         if (!removed.ok) {
@@ -705,12 +716,6 @@ async function handleClaudeDesktopToggle(ctx: ManagementContext): Promise<Respon
             "The gateway profile could not be removed safely, so first-party mode was not applied.", { desiredEnabled });
         }
         gatewayRemoved = removed.changed;
-      }
-      const applied = applyDesktopFirstParty(current);
-      if (!applied.ok) {
-        const reason = applied.reason === "foreign_env" || applied.reason === "intercept_disabled" ? applied.reason : "write_failed";
-        return postCommitRefusal(applied.reason === "unreadable" || applied.reason === "ca_unavailable" ? 500 : 409, "claude-desktop", reason,
-          firstPartyRefusalMessage(applied.reason, applied.path), { desiredEnabled });
       }
       const modeSaved = persistDesktopModeMarker("first-party");
       const changed = applied.changed || gatewayRemoved;
@@ -748,6 +753,8 @@ async function handleClaudeDesktopToggle(ctx: ManagementContext): Promise<Respon
         nativeContextLimits(latest),
       );
       if (!result.written) return postCommitRefusal(500, "claude-desktop", "write_failed", "Claude Desktop apply failed.", { desiredEnabled: latestDesiredEnabled });
+      const removed = removeDesktopFirstParty();
+      if (!removed.ok) return postCommitRefusal(500, "claude-desktop", "write_failed", "Gateway applied, but first-party settings cleanup did not complete.", { desiredEnabled: latestDesiredEnabled });
       const modeSaved = persistDesktopModeMarker("gateway");
       return jsonResponse({
         ok: true, clientId: "claude-desktop", changed: true, state: "current", desiredEnabled: latestDesiredEnabled,

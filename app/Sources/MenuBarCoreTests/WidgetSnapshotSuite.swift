@@ -27,7 +27,7 @@ enum WidgetSnapshotSuite {
                 "series": [["id":"visible/m","provider":"visible","model":"m","total":2,"points":[2]],
                            ["id":"hidden/m","provider":"hidden","model":"m","total":1,"points":[1]],
                            ["id":"other","provider":"","model":"other","total":3,"points":[3]]]]
-            func timeline(_ echo: [String: Any]? = nil) -> UsageTimeline {
+            func timeline(_ echo: Any? = nil) -> UsageTimeline {
                 var value = base
                 if let echo { value["appliedFilters"] = echo }
                 return try! JSONDecoder().decode(UsageTimeline.self, from: JSONSerialization.data(withJSONObject: value))
@@ -41,6 +41,22 @@ enum WidgetSnapshotSuite {
             t.equal(old.truncated, true)
             let mismatched = timeline(["models": NSNull(), "hiddenProviders": []]).projected(settings)
             t.equal(mismatched.truncated, true)
+            let malformed: [Any] = [
+                ["hiddenProviders": ["hidden"]],
+                ["models": NSNull()],
+                ["models": "wrong", "hiddenProviders": ["hidden"]],
+                ["models": NSNull(), "hiddenProviders": Array(repeating: "hidden", count: 101)],
+                ["models": Array(repeating: "visible/m", count: 101), "hiddenProviders": []],
+                ["models": NSNull(), "hiddenProviders": [1]],
+                "wrong", NSNull(),
+            ]
+            for receipt in malformed {
+                let decoded = timeline(receipt)
+                t.expect(decoded.appliedFilters == nil, "malformed optional receipt is ignored")
+                t.equal(decoded.projected(settings).series.map(\.id), ["visible/m"])
+                t.equal(decoded.projected(settings).truncated, true)
+                t.equal(decoded.projected(.defaults).series.count, 3)
+            }
             let selected = CompanionSettings(models: ["visible/m"])
             t.equal(timeline(["models": ["visible/m"], "hiddenProviders": []]).projected(selected).series.map(\.id), ["visible/m", "other"])
             let empty = timeline().projected(CompanionSettings(models: []))

@@ -87,3 +87,9 @@ all terminal/cancellation assertions are unchanged. Sol reviewed both adjustment
 Obsolete failed manual runs 35694628931 and 35695558779 were cancelled after their failure logs
 were captured, to release runner capacity. Their partial successful jobs remain historical
 diagnostics only. Cancelled workflows do not count as passing verification.
+
+Windows shard 8 at d7d2838341 exposed two management-auth teardown failures. The test drained
+ACL reaps before draining native-main startup releases, allowing the latter to finish work that
+registered a later reap. Teardown now drains native-main releases, all config-directory hardening,
+then ACL child reaps before deleting the temporary home. Sol reviewed this ordering; removal
+retry budgets and all management-auth assertions remain unchanged.

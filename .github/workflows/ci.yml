@@ -1180,7 +1180,9 @@ jobs:
           toolchain: stable
 
       - name: Test MenuBarCore
-        run: bun run test:macos
+        run: |
+          bun run test:macos
+          swift run --package-path app NativeTrayTests
 
       - name: Build dashboard
         run: bun run build:gui
@@ -1200,7 +1202,7 @@ jobs:
         # build has no business holding the release key. Updater artifacts are therefore off
         # here and the signing path stays in release.yml, which already reads the secret and
         # refuses to publish a manifest when it is absent.
-        run: bunx tauri build --ci --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        run: bunx tauri build --ci --bundles app --config '{"bundle":{"createUpdaterArtifacts":false,"macOS":{"signingIdentity":"-"}}}'
 
       - name: Verify WidgetKit appex and desktop app
         run: |
@@ -1214,6 +1216,8 @@ jobs:
           test -x "$app/Contents/MacOS/$executable"
           test -x "$app/Contents/PlugIns/OpenCodexWidget.appex/Contents/MacOS/OpenCodexWidget"
           test -x "$app/Contents/MacOS/ocx"
+          # Verify actual entitlements and execute the signed Bun sidecar as well as the seal.
+          bash desktop/scripts/verify-macos-runtime.sh "$app"
           codesign -dv "$app/Contents/PlugIns/OpenCodexWidget.appex"
           # The widget is only offered in the gallery when its bundle is actually linked in, and
           # nothing else here would notice its absence: the appex builds, signs and registers

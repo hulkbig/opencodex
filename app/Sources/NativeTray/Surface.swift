@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// A single native material surface; the popover clips its outer silhouette.
+/// A single native material surface inside a transparent AppKit panel.
 /// The SwiftUI content deliberately paints no web-style background or second radius.
 @MainActor
 final class NativeTrayHostingController: NSViewController {
@@ -27,8 +27,7 @@ final class NativeTrayHostingController: NSViewController {
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
             glass.style = .regular
-            // AppKit's popover owns all outer corners and the anchor arrow.
-            glass.cornerRadius = 0
+            glass.cornerRadius = 16
             glass.contentView = hosting.view
             view = glass
             hosting.view.translatesAutoresizingMaskIntoConstraints = false
@@ -41,6 +40,21 @@ final class NativeTrayHostingController: NSViewController {
             return
         }
         #endif
-        view = hosting.view
+        let material = NSVisualEffectView()
+        material.material = .popover
+        material.blendingMode = .behindWindow
+        material.state = .active
+        material.wantsLayer = true
+        material.layer?.cornerRadius = 16
+        material.layer?.masksToBounds = true
+        material.addSubview(hosting.view)
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            hosting.view.leadingAnchor.constraint(equalTo: material.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: material.trailingAnchor),
+            hosting.view.topAnchor.constraint(equalTo: material.topAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: material.bottomAnchor),
+        ])
+        view = material
     }
 }

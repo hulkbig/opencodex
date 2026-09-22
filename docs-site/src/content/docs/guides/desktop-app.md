@@ -69,6 +69,12 @@ model list, and provider/account limits. Quota reset countdowns sit beside their
 hover for the exact reset time. Existing **Menu bar & widget** settings control the
 visible sections and chart. Missing measurements are not presented as zero usage.
 
+On macOS, this window uses native SwiftUI controls and a scrollable AppKit panel. Apple
+Liquid Glass is used on macOS 26 and later; older systems use the native popover material.
+The header and the Refresh and Dashboard buttons remain visible while scrolling long
+account lists. You can also open it with **View → Show Usage** (Command-Shift-U).
+Press Escape or click outside the panel to dismiss it.
+
 The tray menu shows today's request count and tokens, with estimated cost when enabled.
 It uses the same local-day usage as the widget. Choose **Refresh now** to update immediately;
 the app also refreshes every 60 seconds. Display preferences remain in the dashboard's

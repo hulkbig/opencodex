@@ -93,6 +93,7 @@ public struct NativeTrayProvider: Decodable, Identifiable {
     public struct Account: Decodable, Identifiable {
         public let id: String
         public let label: String
+        public let email: String?
         public let plan: String?
         public let active: Bool
         public let unavailable: Bool

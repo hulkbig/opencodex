@@ -22,6 +22,9 @@ struct NativeTrayProviderView: View {
                                 .accessibilityLabel("Active account").help("Active account")
                         }
                     }.font(.caption)
+                    if let email = account.email, email != account.label {
+                        Text(email).font(.caption2).foregroundStyle(.secondary)
+                    }
                     if account.unavailable || account.windows.isEmpty {
                         Text("No quota data").font(.caption2).foregroundStyle(.secondary)
                     }
@@ -47,6 +50,7 @@ struct NativeTrayProviderView: View {
 struct NativeTrayChartView: View {
     let chart: NativeTrayChart
     let style: String
+    private let palette: [Color] = [.blue, .orange, .green, .purple, .red, .cyan, .pink, .yellow, .mint, .indigo]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -59,19 +63,45 @@ struct NativeTrayChartView: View {
                             let date = Date(timeIntervalSince1970: chart.start + Double(index) * chart.bucketSeconds)
                             if style == "stackedBar" {
                                 BarMark(x: .value("Time", date), y: .value("Tokens", max(0, point)), stacking: .standard)
-                                    .foregroundStyle(by: .value("Model", series.label))
+                                    .foregroundStyle(by: .value("Series", series.id))
                             } else {
-                                LineMark(x: .value("Time", date), y: .value("Tokens", max(0, point)))
-                                    .foregroundStyle(by: .value("Model", series.label))
+                                LineMark(x: .value("Time", date), y: .value("Tokens", max(0, point)), series: .value("Series", series.id))
+                                    .foregroundStyle(by: .value("Series", series.id))
                             }
                         }
                     }
                 }
-                .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) }
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
-                .chartLegend(position: .bottom, spacing: 6)
-                .frame(height: 160)
+                .chartYAxis {
+                    AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { axis in
+                        AxisGridLine()
+                        AxisValueLabel(anchor: .trailing) {
+                            if let value = axis.as(Double.self) { Text(NativeTrayFormat.tokens(value)) }
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: 3)) { axis in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel(anchor: .center) {
+                            if let date = axis.as(Date.self) {
+                                Text(date, format: .dateTime.hour().minute())
+                            }
+                        }
+                    }
+                }
+                .chartForegroundStyleScale(domain: chart.series.map(\.id), range: chart.series.indices.map { palette[$0 % palette.count] })
+                .chartLegend(.hidden)
+                .frame(height: 130)
                 .accessibilityLabel("Usage timeline")
+                LazyVGrid(columns: [GridItem(.flexible(), alignment: .leading), GridItem(.flexible(), alignment: .leading)], alignment: .leading, spacing: 5) {
+                    ForEach(Array(chart.series.enumerated()), id: \.element.id) { index, series in
+                        HStack(spacing: 5) {
+                            Circle().fill(palette[index % palette.count]).frame(width: 6, height: 6).accessibilityHidden(true)
+                            Text(series.label).lineLimit(1).truncationMode(.middle).help(series.label)
+                        }.font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
             }
             if chart.incomplete {
                 Text("Some usage records are unavailable").font(.caption2).foregroundStyle(.secondary)

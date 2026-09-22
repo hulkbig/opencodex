@@ -75,3 +75,15 @@ the correction. A later Windows shard exposed the existing 100ms timing margin i
 400-body case. Its helper now waits for the real bounded reader's timeout before releasing the
 upstream suffix; retry rules and product timeouts are unchanged. Sol confirmed the call ordering.
 The helper is committed with the test. All of these checks remain unrun locally.
+
+The older macOS control run 35692726962 timed out after stopping in the first structure-SSOT
+test. Its synchronous Git child is the source-based inference; the log does not identify the
+child PID. The file now runs through the existing shared singleton roster, retaining every
+assertion and existing time limit. Separately, the bridge-stall test's fixed six-second outer
+ceiling pre-empted its CI-scaled 30/45-second inner watchdog. Its outer ceiling now retains the
+same two-second cleanup margin on each platform; the product's one-second stall setting and
+all terminal/cancellation assertions are unchanged. Sol reviewed both adjustments.
+
+Obsolete failed manual runs 35694628931 and 35695558779 were cancelled after their failure logs
+were captured, to release runner capacity. Their partial successful jobs remain historical
+diagnostics only. Cancelled workflows do not count as passing verification.

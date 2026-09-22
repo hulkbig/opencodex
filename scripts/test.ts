@@ -351,6 +351,9 @@ export const SERIAL_FULL_SUITE_FILES = [
   "codex-integration/issue-452-empty-503.test.ts",
   "adapters/openai/openai-provider-option-e2e.test.ts",
   "ci-workflows/release-helper.test.ts",
+  // The full macOS isolate pool stalled in the structure gate's synchronous Git
+  // child after earlier files; fresh-process execution retains the same assertions.
+  "ci-workflows/structure-ssot.test.ts",
   "update/update-stop-first.test.ts",
   // Relays a 50 MiB WebSocket frame end to end against a 15s deadline, so its result is a
   // measurement of the whole process, not of the relay. On a healthy 3-CPU macOS runner the

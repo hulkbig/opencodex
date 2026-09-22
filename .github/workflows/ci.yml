@@ -748,6 +748,9 @@ jobs:
       # repeated attempt belongs. One execution, whatever the outcome; the shared classifier
       # decides which message is printed, never whether the leg fails.
       - name: Test
+        env:
+          # The measured unsharded control takes about 51 minutes; the job retains its 75m cap.
+          OCX_TEST_MAIN_TIMEOUT_MS: '3600000'
         run: |
           # GitHub Actions starts bash `run:` blocks with `-e`. Disable
           # errexit so a Bun crash reaches PIPESTATUS and the classifier below,
@@ -760,11 +763,11 @@ jobs:
           # --timeout: Bun's default 5s per-test ceiling is the recurring flake
           # class on this loaded shared runner (real retry windows + server
           # round-trips exceed 5s under contention; a 10s-floor in-test
-          # watchdog fired at 10.16s there). 60s keeps hangs bounded (the 30m
+          # watchdog fired at 10.16s there). 60s keeps hangs bounded (the 75m
           # job timeout is the outer backstop) while removing the timing
           # flakes — assertions are untouched. Pairs with the 30s CI floor in
           # tests/helpers/ci-watchdog.ts.
-          bun test --isolate --timeout 60000 tests 2>&1 | tee "$suite_log"
+          bun run test --parallel=1 --timeout 60000 2>&1 | tee "$suite_log"
           suite_status="${PIPESTATUS[0]}"
           if [ "$suite_status" -eq 0 ]; then
             exit 0

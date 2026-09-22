@@ -9,6 +9,23 @@ public struct TimelineSeries: Decodable, Equatable, Sendable {
     public let points: [Double]
 }
 
+public struct TimelineAppliedFilters: Decodable, Equatable, Sendable {
+    public let models: [String]?
+    public let hiddenProviders: [String]
+    private enum CodingKeys: String, CodingKey { case models, hiddenProviders }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        guard values.contains(.models) else {
+            throw DecodingError.keyNotFound(CodingKeys.models, .init(codingPath: decoder.codingPath, debugDescription: "Missing model filter"))
+        }
+        models = try values.decodeIfPresent([String].self, forKey: .models)
+        hiddenProviders = try values.decode([String].self, forKey: .hiddenProviders)
+        guard (models?.count ?? 0) <= 100, hiddenProviders.count <= 100 else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Filter bound exceeded"))
+        }
+    }
+}
+
 public struct UsageTimeline: Decodable, Equatable, Sendable {
     public let start: Double
     public let end: Double
@@ -21,6 +38,7 @@ public struct UsageTimeline: Decodable, Equatable, Sendable {
     public let availableModels: [String]
     public let missingMeasurements: Int
     public let truncated: Bool?
+    public let appliedFilters: TimelineAppliedFilters?
 
     public var maxPoint: Double {
         series.flatMap(\.points).max() ?? 0
@@ -35,5 +53,33 @@ public struct UsageTimeline: Decodable, Equatable, Sendable {
 
     public var isEmpty: Bool {
         series.allSatisfy { $0.total == 0 }
+    }
+}
+
+public extension UsageTimeline {
+    func projected(_ settings: CompanionSettings) -> UsageTimeline {
+        let identity: (String) -> Data = { Data($0.utf8) }
+        let hidden = Set(settings.hiddenProviders.map(identity))
+        let models = settings.models.map { Set($0.map(identity)) }
+        let emptySelection = models?.isEmpty == true
+        let active = !hidden.isEmpty || models != nil
+        let matches = appliedFilters.map { receipt in
+            Set(receipt.hiddenProviders.map(identity)) == hidden
+                && receipt.models.map { Set($0.map(identity)) } == models
+        } ?? false
+        let visible = emptySelection ? [] : series.filter { row in
+            if row.id == "other", row.provider.isEmpty { return !active || matches }
+            return !hidden.contains(identity(row.provider))
+                && (models == nil || models!.contains(identity("\(row.provider)/\(row.model)")) || models!.contains(identity(row.model)))
+        }
+        let available = availableModels.filter { id in
+            guard let slash = id.firstIndex(of: "/") else { return true }
+            return !hidden.contains(identity(String(id[..<slash])))
+        }
+        let uncertain = !emptySelection && (active || appliedFilters != nil) && !matches
+        return UsageTimeline(start: start, end: end, bucketSeconds: bucketSeconds, buckets: buckets,
+            metric: metric, aggregation: aggregation, grouping: grouping, series: visible,
+            availableModels: available, missingMeasurements: missingMeasurements,
+            truncated: uncertain ? true : truncated, appliedFilters: appliedFilters)
     }
 }

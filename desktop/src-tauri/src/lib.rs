@@ -1,4 +1,7 @@
 mod auth;
+#[cfg(target_os = "macos")]
+mod companion_query;
+mod companion_usage;
 mod endpoint;
 mod exit;
 mod first_run;

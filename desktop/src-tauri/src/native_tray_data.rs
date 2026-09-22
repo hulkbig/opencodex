@@ -1,4 +1,5 @@
 //! Independent, bounded reads; a failed section cannot discard another section's result.
+use crate::companion_query::timeline_query;
 use crate::{
     native_tray_accounts as accounts, native_tray_snapshot as snapshot, proxy::ProxyClient,
 };
@@ -209,41 +210,6 @@ async fn load_providers(proxy: &ProxyClient, sources: Vec<accounts::Source>) -> 
     }
     // Dropping JoinSet aborts in-flight requests, including when the root task is cancelled.
     rows
-}
-
-fn timeline_query(settings: &Value) -> String {
-    let mut url =
-        reqwest::Url::parse("http://127.0.0.1/api/usage/timeline").expect("constant loopback URL");
-    {
-        let mut query = url.query_pairs_mut();
-        for (query_key, key) in [
-            ("hours", "chartHours"),
-            ("bucketMinutes", "bucketMinutes"),
-            ("metric", "tokenMetric"),
-            ("aggregation", "aggregation"),
-            ("grouping", "chartGrouping"),
-        ] {
-            let value = if let Some(text) = settings[key].as_str() {
-                text.to_owned()
-            } else {
-                settings[key].to_string()
-            };
-            query.append_pair(query_key, &value);
-        }
-        if let Some(models) = settings["models"].as_array() {
-            if !models.is_empty() {
-                query.append_pair(
-                    "models",
-                    &models
-                        .iter()
-                        .filter_map(Value::as_str)
-                        .collect::<Vec<_>>()
-                        .join(","),
-                );
-            }
-        }
-    }
-    url.query().unwrap_or_default().into()
 }
 
 #[cfg(test)]

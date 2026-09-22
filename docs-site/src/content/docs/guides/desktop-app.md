@@ -67,7 +67,11 @@ desktop environment does not expose a tray icon.
 The usage window shows Today and 30-day totals, the configured usage chart, a compact
 model list, and provider/account limits. Quota reset countdowns sit beside their bars;
 hover for the exact reset time. Existing **Menu bar & widget** settings control the
-visible sections and chart. Missing measurements are not presented as zero usage.
+visible sections and chart. Hidden providers are excluded from the title, totals, quotas and chart.
+The chart includes activity from the current time interval. A partial-data indicator means some
+chart data cannot be attributed reliably. Missing measurements are not presented as zero usage.
+On Windows and Linux, scroll within the usage window to reach Refresh and Dashboard at the
+end of a long account list.
 
 On macOS, this window uses native SwiftUI controls and a scrollable AppKit panel. Apple
 Liquid Glass is used on macOS 26 and later; older systems use the native popover material.

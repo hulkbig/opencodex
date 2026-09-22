@@ -309,9 +309,10 @@ describe("GitHub Actions hardening", () => {
     expect(macosControlJob?.["runs-on"]).toBe("macos-latest");
     expect(macosControlJob?.strategy).toBeUndefined();
     const macosControlSteps = macosControlJob?.steps ?? [];
-    expect(macosControlSteps.some(step => step.run?.includes("bun test --isolate --timeout 60000 tests"))).toBe(true);
+    expect(macosControlSteps.some(step => step.run?.includes("bun run test --parallel=1 --timeout 60000"))).toBe(true);
     expect(macosControlSteps.some(step => step.run?.includes("--shard"))).toBe(false);
-    const macosControlTestRun = macosControlSteps.find(step => step.run?.includes("bun test --isolate --timeout 60000 tests"))?.run ?? "";
+    expect(macosControlSteps.find(step => step.name === "Test")?.env?.OCX_TEST_MAIN_TIMEOUT_MS).toBe("3600000");
+    const macosControlTestRun = macosControlSteps.find(step => step.run?.includes("bun run test --parallel=1 --timeout 60000"))?.run ?? "";
     expect(hasExactShellCommand(macosControlTestRun, "set +e")).toBe(true);
     expect(macosControlTestRun).not.toContain("for attempt in");
     expect(macosControlTestRun).not.toContain("while true");
@@ -5587,7 +5588,7 @@ test.skipIf(process.platform === "win32")("release shell recovers only unverifie
         // RESUME mirrors the workflow, where the env always defines it; the
         // non-resume branches are what every scenario here exercises.
         env: { ...process.env, SCENARIO: scenario.mode, DRY_RUN: String(scenario.dry),
-          NPM_DIST_TAG: "latest", RELEASE_VERSION: "9.8.7", RESUME: "false", GITHUB_OUTPUT: output,
+          NPM_DIST_TAG: "latest", RELEASE_VERSION: "9.8.7", RESUME: "false", GITHUB_SHA: "a".repeat(40), GITHUB_OUTPUT: output,
           GITHUB_STEP_SUMMARY: summary, CALLS: calls, COUNTER: join(dir, "counter") },
         stdin: "ignore", stdout: "pipe", stderr: "pipe",
       });

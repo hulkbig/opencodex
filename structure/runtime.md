@@ -13,6 +13,9 @@ Virtual models are the sole model-identity transition: the ordinary and compact 
 selected public id in diagnostics, rewrite `route.modelId` to the upstream wire id, and atomically
 replace `route.staticPolicy` before adapter or capability decisions continue. Model aliases are
 resolved before the route result is built, so their policy is already keyed by the native wire id.
+Live selector hints obey the [credential-scoped cache contract](catalog.md): a selection change
+cannot reuse the previous credential's roster to choose an alias target. Passive OAuth observation
+neither refreshes credentials nor repairs their storage.
 
 Routed Meta Muse requests use the registry-owned [Muse effort and header contract](providers-and-adapters.md); `max` reaches the provider through the existing reasoning mapper.
 
@@ -589,3 +592,7 @@ start holds the same lease through bind plus PID and runtime-address publication
 rollback cannot prove the socket closed, the process retains its lease until exit.
 The registration is never deleted; `ocx service install` releases the marker only after the
 registration succeeds.
+
+Bun updater lease and recovery behavior follows the [update transaction contract](ops/docs-and-release.md#bun-updater-ownership-transaction).
+
+Companion timeline and filtered totals follow the [companion usage contract](companion.md).

@@ -361,6 +361,12 @@ export const SERIAL_FULL_SUITE_FILES = [
   // changing. Quarantining it here is what keeps it a test of the relay instead of a test of
   // its neighbours.
   "server/server-live.test.ts",
+  // These exercise the default-home service authority, shared by parallel Bun workers.
+  // A fresh process/home prevents another file's authority from becoming this fixture's input.
+  "service/service-ownership-state.test.ts",
+  "service/service-sqlite-home.test.ts",
+  "service/service.test.ts",
+  "codex-integration/native-grok-toggle.test.ts",
 ] as const;
 
 type SerialLaneBasename = (typeof SERIAL_FULL_SUITE_FILES)[number] extends infer P
@@ -388,9 +394,18 @@ function canUseSerialLanes(requested: string[]): boolean {
 }
 
 /** Build the default full-suite plan: one bounded main lane plus isolated risky files. */
-export function resolveBunTestPlan(requested: string[], comparisonCommit?: string): BunTestLane[] {
+export function resolveBunTestPlan(
+  requested: string[], comparisonCommit?: string,
+  env: Record<string, string | undefined> = process.env,
+): BunTestLane[] {
+  const rawTimeout = env.OCX_TEST_MAIN_TIMEOUT_MS;
+  const mainTimeout = rawTimeout === undefined ? 900_000 : Number(rawTimeout);
+  if (rawTimeout !== undefined && (!/^\d+$/.test(rawTimeout)
+    || !Number.isSafeInteger(mainTimeout) || mainTimeout < 60_000 || mainTimeout > 3_600_000)) {
+    throw new Error("OCX_TEST_MAIN_TIMEOUT_MS must be an integer between 60000 and 3600000");
+  }
   if (!canUseSerialLanes(requested)) {
-    return [{ label: "suite", args: resolveBunTestArgs(requested, comparisonCommit), timeoutMs: 15 * 60 * 1000 }];
+    return [{ label: "suite", args: resolveBunTestArgs(requested, comparisonCommit), timeoutMs: mainTimeout }];
   }
 
   const mainArgs = resolveBunTestArgs(requested, comparisonCommit);
@@ -399,7 +414,7 @@ export function resolveBunTestPlan(requested: string[], comparisonCommit?: strin
   mainArgs.splice(rootIndex === -1 ? mainArgs.length : rootIndex, 0, ...ignores);
   const serialRequested = withoutParallelOverride(requested);
   return [
-    { label: "parallel suite", args: mainArgs, timeoutMs: 15 * 60 * 1000 },
+    { label: "parallel suite", args: mainArgs, timeoutMs: mainTimeout },
     ...SERIAL_FULL_SUITE_FILES.map(file => ({
       label: basename(file),
       args: resolveBunTestArgs(["--parallel=1", ...serialRequested, `./tests/${file}`]),

@@ -250,10 +250,13 @@ The native collector uses the existing identity-bound `ProxyClient` for GET-only
 projects a versioned display DTO. Credentials and raw configuration never reach Swift. Closing
 aborts the owned task and its bounded request group; generation and runtime-binding checks reject
 late results. Swift callbacks only refresh, close, or navigate the existing dashboard window.
+Native/web/widget filtering and title parity follow the [companion usage contract](companion.md).
 
 Windows keeps the Acrylic web popup; Linux remains opaque. The `VIBRANT_SURFACE` constant in
 `desktop/src-tauri/src/popup.rs` connects that native webview builder to its
 `data-tray-vibrancy="on"` hook. The macOS panel does not load that web route or its CSS.
+The web popup constrains its document/root to the viewport and scrolls `.tray-page` inside it,
+so the vibrant body's rounded clipping cannot trap the footer below a long account list.
 
 Transparent Tauri windows on macOS require the `macos-private-api` Cargo feature and
 `app.macOSPrivateApi` in `desktop/src-tauri/tauri.conf.json`. Enabling that API forecloses Mac App

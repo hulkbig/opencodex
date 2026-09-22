@@ -48,6 +48,19 @@ async function call(method: string, body?: unknown, userAgent?: string): Promise
 }
 
 describe("companion settings", () => {
+  test("nested native model identifiers survive settings writes", async () => {
+    await withHome(async () => {
+      const models = ["cloudflare-ai/@cf/meta/llama", "github-models/openai/gpt-4.1"];
+      const result = await call("PUT", { settings: { models } });
+      expect(result.status).toBe(200);
+      expect(result.body.settings.models).toEqual(models);
+      expect(loadCompanionSettings().settings.models).toEqual(models);
+      for (const invalid of ["/model", "provider/", "provider/two words"]) {
+        expect((await call("PUT", { settings: { models: [invalid] } })).status).toBe(400);
+      }
+    });
+  });
+
   test("defaults, corrupt files, validation, and roundtrip persistence", async () => {
     await withHome(home => {
       expect(loadCompanionSettings().settings).toEqual(DEFAULT_COMPANION_SETTINGS);

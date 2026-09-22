@@ -67,7 +67,7 @@ describe("the Bun crash classifier is shared", () => {
 
   const lanes = {
     "macos-shard": runBlockContaining(workflow, "run_macos_suite tests"),
-    "macos-control": runBlockContaining(workflow, "bun test --isolate --timeout 60000 tests 2>&1"),
+    "macos-control": runBlockContaining(workflow, "bun run test --parallel=1 --timeout 60000 2>&1"),
   };
 
   test("the signatures exist in the classifier", () => {

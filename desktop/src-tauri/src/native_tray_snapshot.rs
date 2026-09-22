@@ -1,31 +1,6 @@
-//! Display-only projection shared by the native collector and its contract tests.
-use serde_json::{json, Map, Value};
-
-pub fn number(value: &Value) -> Option<f64> {
-    value.as_f64().filter(|n| n.is_finite() && *n >= 0.0)
-}
-
-pub fn text<'a>(value: &'a Value, key: &str) -> &'a str {
-    value.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-pub fn hidden(settings: &Value, provider: &str) -> bool {
-    settings["hiddenProviders"]
-        .as_array()
-        .is_some_and(|rows| rows.iter().any(|row| row.as_str() == Some(provider)))
-}
-
-pub fn selected(settings: &Value, row: &Value) -> bool {
-    let provider = text(row, "provider");
-    let model = text(row, "model");
-    !hidden(settings, provider)
-        && settings["models"].as_array().map_or(true, |models| {
-            models.iter().any(|item| {
-                item.as_str()
-                    .is_some_and(|item| item == model || item == format!("{provider}/{model}"))
-            })
-        })
-}
+//! Native display settings and timeline projection.
+pub use crate::companion_usage::{hidden, number, text, usage};
+use serde_json::{json, Value};
 
 pub fn display_settings(settings: Option<&Value>) -> Value {
     let enabled = |key| settings.is_some_and(|s| s[key].as_bool() == Some(true));
@@ -43,87 +18,15 @@ pub fn empty() -> Value {
         "settings":display_settings(None),"today":null,"month":null,"models":[],"chart":null,"providers":[]})
 }
 
-const TOTAL_KEYS: [&str; 9] = [
-    "requests",
-    "totalTokens",
-    "inputTokens",
-    "outputTokens",
-    "cachedInputTokens",
-    "cacheReadInputTokens",
-    "estimatedCostUsd",
-    "measuredRequests",
-    "pricedRequests",
-];
-
-pub fn usage(body: &Value, settings: &Value) -> Option<(Value, Vec<Value>)> {
-    let source = body["summary"].as_object()?;
-    let all = body["models"].as_array()?;
-    if body.get("error").is_some() {
-        return None;
-    }
-    let rows: Vec<_> = all.iter().filter(|row| selected(settings, row)).collect();
-    let filtering = settings["models"].is_array()
-        || settings["hiddenProviders"]
-            .as_array()
-            .is_some_and(|rows| !rows.is_empty());
-    let mut totals = Map::new();
-    for key in TOTAL_KEYS {
-        let value = if filtering {
-            if rows.is_empty() {
-                None
-            } else {
-                rows.iter()
-                    .map(|row| number(&row[key]))
-                    .collect::<Option<Vec<_>>>()
-                    .map(|values| values.iter().sum())
-            }
-        } else {
-            source.get(key).and_then(number)
-        };
-        totals.insert(key.into(), json!(value));
-    }
-    // Both spellings exist on management projections; prefer the exact cache-read field.
-    if !totals["cacheReadInputTokens"].is_null() {
-        totals.insert(
-            "cachedInputTokens".into(),
-            totals["cacheReadInputTokens"].clone(),
-        );
-    }
-    if number(&body["summary"]["coverageRatio"]) == Some(0.0) && !filtering {
-        totals.insert("measuredRequests".into(), json!(0));
-    }
-    totals.remove("cacheReadInputTokens");
-    totals.insert(
-        "incomplete".into(),
-        json!(["usageIncomplete", "historyTruncated", "entriesTruncated"]
-            .iter()
-            .any(|key| body[key].as_bool() == Some(true))),
-    );
-    let models = rows
-        .iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let unmeasured = number(&row["requests"]).is_some_and(|n| n > 0.0)
-                && (number(&row["measuredRequests"]) == Some(0.0)
-                    || number(&row["coverageRatio"]) == Some(0.0));
-            json!({"id":format!("{}/{}/{}",text(row,"provider"),text(row,"model"),index),
-            "label":text(row,"model"),"requests":number(&row["requests"]),
-            "tokens":if unmeasured { None } else { number(&row["totalTokens"]) }})
-        })
-        .collect();
-    Some((Value::Object(totals), models))
-}
-
 pub fn chart(body: &Value, settings: &Value) -> Option<Value> {
     let start = number(&body["start"])?;
     let bucket = number(&body["bucketSeconds"])?;
     if bucket == 0.0 || start >= 253_402_300_800.0 {
         return None;
     }
-    let rows = body["series"].as_array()?;
+    let (rows, incomplete) = crate::companion_query::timeline_rows(body, settings)?;
     let series: Option<Vec<_>> = rows
-        .iter()
-        .filter(|row| selected(settings, row))
+        .into_iter()
         .enumerate()
         .map(|(index, row)| {
             let points: Option<Vec<_>> = row["points"].as_array()?.iter().map(number).collect();
@@ -133,7 +36,7 @@ pub fn chart(body: &Value, settings: &Value) -> Option<Value> {
         .collect();
     Some(
         json!({"start":start,"bucketSeconds":bucket,"series":series?,
-        "incomplete":body["truncated"].as_bool()==Some(true)||number(&body["missingMeasurements"]).is_some_and(|n|n>0.0)}),
+        "incomplete":incomplete}),
     )
 }
 

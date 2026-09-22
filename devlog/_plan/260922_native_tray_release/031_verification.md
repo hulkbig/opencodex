@@ -67,3 +67,11 @@ At 4a38eb4bb9, service lifecycle passed on all three platforms, and manual Windo
 and 6 passed. This is intermediate evidence only: the subsequent source-review fixes require
 fresh hosted checks. Source review does not establish runtime success or a universal absence
 of regressions.
+
+Hosted ec7ad275f2 exposed a test-injection error: the new ZCode failed-stat case overrode
+`store.io` while the planner consumes `input.io`. The fixture now injects through the consumed
+seam and retains the preview refusal, actual-write refusal and no-write assertions. Sol reviewed
+the correction. A later Windows shard exposed the existing 100ms timing margin in the stalled
+400-body case. Its helper now waits for the real bounded reader's timeout before releasing the
+upstream suffix; retry rules and product timeouts are unchanged. Sol confirmed the call ordering.
+The helper is committed with the test. All of these checks remain unrun locally.

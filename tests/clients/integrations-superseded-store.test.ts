@@ -187,10 +187,9 @@ describe("a client that moved its provider store", () => {
     const configPath = installZcode();
     const currentStore = storePath();
     const io = store.io();
-    const uncertainStore: IntegrationStateStore = { ...store, io: () => ({
+    const observed = input({ io: {
       ...io, statKind: path => path === currentStore ? "failed" : io.statKind(path),
-    }) };
-    const observed = input({ store: uncertainStore });
+    } });
     expect(previewIntegration(observed, { operation: "apply" }).canApply).toBe(false);
     expect(applyIntegration(observed).ok).toBe(false);
     expect(existsSync(configPath)).toBe(false);

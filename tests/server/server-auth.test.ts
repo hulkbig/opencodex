@@ -2,6 +2,7 @@ import { waitForNativeMainStartupGate } from "../../src/codex/native-profile-sta
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { logsFromApiBody } from "../helpers/logs-api";
+import { timeoutGatedErrorBody } from "../helpers/timeout-gated-error-body";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
@@ -3555,29 +3556,23 @@ describe("server local API auth", () => {
     }
   });
 
-  // Stall past BOUNDED_BODY_TIMEOUT_MS (5s). The old 7s test budget left ~1.9s of
-  // headroom and timed out on windows-latest under runner contention.
+  // Release the suffix only after real inspection timed out, independent of header latency.
   test("stalled 400 body timeout never authorizes a pool retry", async () => {
     const prefix = unsupportedModelBody().slice(0, -1);
-    const suffix = "}";
-    const body = prefix + suffix;
-    const harness = await startPoolRetryHarness(() => rejectionResponse(new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(prefix));
-        setTimeout(() => {
-          controller.enqueue(new TextEncoder().encode(suffix));
-          controller.close();
-        }, 5_100);
-      },
-    })));
+    const body = prefix + "}";
+    const stalled = timeoutGatedErrorBody(prefix, "}");
+    let harness: PoolRetryHarness | undefined;
     try {
+      harness = await startPoolRetryHarness(() => rejectionResponse(stalled.stream()));
       const response = await harness.request();
       expect(response.status).toBe(400);
       expect(response.headers.get("x-pool-retry-test")).toBe("original");
       expect(await response.text()).toBe(body);
+      expect(stalled.observedTimeouts()).toBeGreaterThan(0);
       expect(harness.dispatches).toEqual(["acct-pool-a"]);
     } finally {
-      await stopPoolRetryHarness(harness);
+      stalled.restore();
+      if (harness) await stopPoolRetryHarness(harness);
     }
   }, { timeout: SERVER_BUDGET_MS });
 

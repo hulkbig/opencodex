@@ -262,9 +262,11 @@ async function applyFirstPartyDesktop(
     const removed = removeDesktop3pStandardPivot({ appliedFingerprint, replaceWhileEnabled: true });
     if (!removed.ok) {
       const restored = removed.changed || !applied.changed || rollback();
-      if (removed.changed) saveDesktopMode("first-party", deps);
+      const modeSaved = !removed.changed || saveDesktopMode("first-party", deps);
+      const warning = [restored ? "" : "first-party settings rollback did not complete",
+        modeSaved ? "" : "first-party is active but its mode marker was not saved"].filter(Boolean).join("; ");
       return { ok: false, path: library.selectedProfilePath ?? "", reason: removed.kind === "cleanup_incomplete" ? "gateway_cleanup_incomplete" : `gateway_profile_active:${removed.reason ?? removed.kind}`,
-        ...(restored ? {} : { warning: "first-party settings rollback did not complete" }) };
+        ...(warning ? { warning } : {}) };
     }
   }
   const saved = saveDesktopMode("first-party", deps);

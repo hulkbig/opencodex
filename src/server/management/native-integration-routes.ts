@@ -705,15 +705,16 @@ async function handleClaudeDesktopToggle(ctx: ManagementContext): Promise<Respon
           return postCommitRefusal(500, "claude-desktop", "write_failed",
             "Gateway cleanup and first-party settings rollback did not complete.", { desiredEnabled });
         }
-        if (!removed.ok && removed.changed) persistDesktopModeMarker("first-party");
+        const partialModeWarning = !removed.ok && removed.changed && !persistDesktopModeMarker("first-party")
+          ? " First-party is active but its mode marker was not saved." : "";
         if (removed.kind === "cleanup_incomplete") {
           return postCommitRefusal(500, "claude-desktop", "cleanup_incomplete",
-            "Claude Desktop now points at standard mode, but gateway credential cleanup is incomplete; the first-party connection remains active.",
+            "Claude Desktop now points at standard mode, but gateway credential cleanup is incomplete; the first-party connection remains active." + partialModeWarning,
             { desiredEnabled, residualPaths: removed.residualPaths ?? [] });
         }
         if (!removed.ok) {
           return postCommitRefusal(409, "claude-desktop", removed.reason === "metadata_unreadable" ? "metadata_unreadable" : "write_failed",
-            "The gateway profile could not be removed safely, so first-party mode was not applied.", { desiredEnabled });
+            "The gateway profile could not be removed safely; the mode switch is incomplete." + partialModeWarning, { desiredEnabled });
         }
         gatewayRemoved = removed.changed;
       }

@@ -1075,13 +1075,15 @@ export async function handleAgentSettingsRoutes(ctx: ManagementContext): Promise
           const removed = (deps.removeDesktop3pStandardPivot ?? removeDesktop3pStandardPivot)({ appliedFingerprint, replaceWhileEnabled: true });
           if (!removed.ok) {
             const restored = removed.changed || !applied.changed || rollback();
-            if (removed.changed) await persistDesktopModeField(config, "first-party");
+            const modeSaved = !removed.changed || (await persistDesktopModeField(config, "first-party")).ok;
+            const warning = [restored ? "" : "first-party settings rollback did not complete",
+              modeSaved ? "" : "first-party is active but its mode marker was not saved"].filter(Boolean).join("; ");
             return jsonResponse({
               error: removed.kind === "cleanup_incomplete"
                 ? "Claude Desktop now points at standard mode, but gateway credential cleanup is incomplete; the first-party connection remains active."
                 : "The gateway profile could not be removed safely, so first-party mode was not applied.",
               code: "claude_desktop_gateway_removal_failed",
-              ...(restored ? {} : { warning: "first-party settings rollback did not complete" }),
+              ...(warning ? { warning } : {}),
               reason: removed.reason ?? removed.kind,
               ...(removed.residualPaths ? { residualPaths: removed.residualPaths } : {}),
             }, removed.kind === "cleanup_incomplete" ? 500 : 409);

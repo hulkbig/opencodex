@@ -76,6 +76,19 @@ describe("companion settings", () => {
     });
   });
 
+  test.each(["{", JSON.stringify({ version: 999, futureSetting: "preserve" })])("partial writes preserve unsupported settings until an explicit reset: %s", async contents => {
+    await withHome(async home => {
+      const path = join(home, "companion.json");
+      writeFileSync(path, contents);
+      const rejected = await call("PUT", { settings: { showChart: false } });
+      expect(rejected.status).toBe(409);
+      expect(rejected.body.code).toBe("companion_settings_corrupt");
+      expect(readFileSync(path, "utf8")).toBe(contents);
+      expect((await call("PUT", { reset: true })).status).toBe(200);
+      expect(loadCompanionSettings().corrupt).toBeUndefined();
+    });
+  });
+
   test("GET, PUT, and reset are routed", async () => {
     await withHome(async () => {
       expect((await call("GET")).status).toBe(200);

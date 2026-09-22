@@ -114,3 +114,5 @@ sudo apt remove opencodex
 ```
 
 For an AppImage, delete the downloaded file.
+
+If saved menu-bar settings cannot be read, partial edits are refused to preserve the file. Restore the file or explicitly reset the companion settings before editing again.

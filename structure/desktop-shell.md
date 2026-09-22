@@ -250,7 +250,7 @@ The native collector uses the existing identity-bound `ProxyClient` for GET-only
 projects a versioned display DTO. Credentials and raw configuration never reach Swift. Closing
 aborts the owned task and its bounded request group; generation and runtime-binding checks reject
 late results. Swift callbacks only refresh, close, or navigate the existing dashboard window.
-Native/web/widget filtering and title parity follow the [companion usage contract](companion.md).
+Native/web/widget filtering, title parity and corrupt-settings preservation follow the [companion usage contract](companion.md).
 
 Windows keeps the Acrylic web popup; Linux remains opaque. The `VIBRANT_SURFACE` constant in
 `desktop/src-tauri/src/popup.rs` connects that native webview builder to its

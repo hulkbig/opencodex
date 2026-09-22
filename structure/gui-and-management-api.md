@@ -137,6 +137,9 @@ be treated as implemented:
 
 ## API ownership
 
+API-key PATCH validates the entire rename/scope patch on a detached entry before replacing live configuration. A rejected field changes neither the existing name nor either scope, including a later unrelated save.
+
+
 The provider editor admits `googleToolSchemaPolicy` as an editor-safe, non-secret field. Its value
 is validated as `compatible` or `reject-lossy` before live adoption and persistence; an invalid
 value changes neither state. Omission remains absent and is resolved by the Google adapter rather

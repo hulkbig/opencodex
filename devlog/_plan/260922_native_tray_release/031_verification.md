@@ -55,3 +55,15 @@ executable beside the trusted interpreter instead of changing shared-file permis
 Replacement ordering and CA startup repairs have source-review follow-ups; their new regression
 cases are committed for hosted execution only. Final read-only reviews and exact-head hosted
 results remain required before integration.
+
+## Final source-review follow-up
+
+The remaining baseline reviewer completed 63/63 assigned files. Its last three findings were
+corrected and received a read-only source/security PASS, with regression cases committed but not
+run locally. An additional Windows shutdown audit found two test files whose production-server
+cleanup was not awaited; both now await release before deleting their directories.
+
+At 4a38eb4bb9, service lifecycle passed on all three platforms, and manual Windows shards 4, 5
+and 6 passed. This is intermediate evidence only: the subsequent source-review fixes require
+fresh hosted checks. Source review does not establish runtime success or a universal absence
+of regressions.

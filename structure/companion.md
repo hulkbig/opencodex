@@ -56,3 +56,5 @@ Malformed optional timeline filter receipts use the older-server fallback withou
 If display settings cannot be read, the native panel keeps independently fetched account limits visible and reports the settings error. Usage sections remain hidden until their display preferences are available; an explicit `showAccounts: false` is honored when settings are readable.
 
 `src/usage/ledger-retention.ts` closes its source reader after copying and before publishing the retained file, allowing replacement on Windows. The final pathname revision check still refuses replacement after a concurrent append or file replacement.
+
+A partial settings PUT refuses unreadable or unsupported persisted content with `409 companion_settings_corrupt`. Only an explicit `reset:true` replaces that content with defaults.

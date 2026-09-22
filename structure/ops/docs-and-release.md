@@ -364,8 +364,9 @@ git ls-remote origin refs/tags/v<version>
 gh release view v<version>
 ```
 
-If any of these commands reports an existing artifact for the requested version, stop before
-publishing. For a non-destructive recovery, choose the next unused version that also outranks the
+If any of these commands reports an existing artifact for the requested version, stop fresh
+publication. A previously acknowledged npm publication may use the explicit same-commit resume
+path above; it never republishes npm. Otherwise choose the next unused version that outranks the
 global tag set and release it through `scripts/release.ts`. A patch is not available once a higher-core
 preview has closed that stable patch line.
 

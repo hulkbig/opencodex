@@ -223,6 +223,11 @@ network access.
 
 ## The tray icon opens a usage popup
 
+`app/Sources/NativeTray/` defines the macOS SwiftUI display model and AppKit popover library.
+It accepts a versioned display-only snapshot and emits UI actions; it owns no network client,
+runtime process or application loop. `NativeTrayTests` exercises its decoding and formatting.
+The library is built separately from the WidgetKit extension.
+
 A left click on the tray icon opens a small always-on-top window anchored to the icon, not the
 dashboard. Reading the current numbers is the reason to look at a tray icon at all, and the
 dashboard is still one menu item away. The popup reuses the dashboard session and the same

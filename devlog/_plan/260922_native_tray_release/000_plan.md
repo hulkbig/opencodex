@@ -44,3 +44,5 @@ P wp0: requirements and source evidence collected, scratch FFI link passed, full
 B wp0: roadmap locked after main-direct review; all four implementation/delivery decade docs populated. The latest user instruction supersedes prior parallel-agent plans. Next cycle implements only native presentation foundations.
 
 C/D wp0: reviewed the roadmap as an executable sequence; staged-document whitespace check passed. This cycle fixes no runtime behavior and makes no regression claim. The main risk remains real native integration, so wp1 must prove SwiftUI/framework linking and model semantics before wp2 can activate it. Continue with wp1 as written; no scope/criterion reduction.
+
+C/D wp1: native presentation and ABI foundation compiled for macOS 13, SwiftUI/Charts/AppKit linked into Rust, 26 model assertions passed, and a real native fixture reached provider 40 by scrolling while retaining header/footer. Apple Liquid Glass requirement is implemented with the system view on supported SDK/OS; actual anchored/background composition remains wp2. Evidence and limitations: `011_presentation_verification.md`. Continue wp2; no full-app or release claim yet.

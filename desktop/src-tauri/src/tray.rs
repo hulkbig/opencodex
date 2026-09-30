@@ -20,6 +20,7 @@ use tauri_plugin_opener::OpenerExt;
 pub struct TrayState {
     pub menu: Mutex<Option<TrayMenu>>,
     pub installing: AtomicBool,
+    pub update_pending: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -34,8 +35,34 @@ impl Default for TrayState {
         Self {
             menu: Mutex::new(None),
             installing: AtomicBool::new(false),
+            update_pending: AtomicBool::new(false),
         }
     }
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn tray_icon_bytes(pending: bool) -> &'static [u8] {
+    if pending {
+        include_bytes!("../icons/tray/icon-update.png")
+    } else {
+        include_bytes!("../icons/tray/icon.png")
+    }
+}
+
+fn apply_update_indicator(app: &AppHandle, pending: bool) {
+    #[cfg(target_os = "macos")]
+    popup::set_update_dot(app, pending);
+    #[cfg(not(target_os = "macos"))]
+    if let Some(tray) = app.tray_by_id("main") {
+        let image =
+            tauri::image::Image::from_bytes(tray_icon_bytes(pending)).expect("generated tray icon");
+        let _ = tray.set_icon(Some(image));
+    }
+}
+
+fn update_pending(app: &AppHandle) -> bool {
+    app.try_state::<TrayState>()
+        .is_some_and(|state| state.update_pending.load(Ordering::Acquire))
 }
 
 /// Build the tray.
@@ -162,9 +189,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 let _ = popup::show(app, endpoint, anchor);
             }
             "open-dashboard" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    window::show(&window);
-                }
+                crate::startup::open_dashboard(app);
             }
             "open-browser" => {
                 let Some(endpoint) = app
@@ -194,31 +219,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             "check-updates" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    updater::check_and_show(&app).await;
+                    let _ = updater::check_and_show(&app).await;
                 });
             }
             "install-update" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let update = app
-                        .state::<crate::updater::PendingUpdate>()
-                        .0
-                        .lock()
-                        .ok()
-                        .and_then(|mut pending| pending.take());
-                    let Some(update) = update else {
-                        return;
-                    };
-                    let version = update.version.clone();
-                    let retry_update = update.clone();
-                    set_installing(&app, &version);
-                    if let Err(error) = updater::install(&app, update).await {
-                        if let Ok(mut pending) =
-                            app.state::<crate::updater::PendingUpdate>().0.lock()
-                        {
-                            *pending = Some(retry_update);
-                        }
-                        set_install_failed(&app, &version);
+                    if let Err(error) = updater::install_pending(&app).await {
                         crate::logging::log_once("updater install failed", &error);
                     }
                 });
@@ -230,6 +237,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
 
+    apply_update_indicator(app, update_pending(app));
     refresh(app, &tray);
     let tray = tray.clone();
     let app = app.clone();
@@ -243,7 +251,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             else {
                 continue;
             };
-            refresh_title(&tray, &proxy);
+            refresh_title(&app, &tray, &proxy);
             tick += 1;
             if tick % 5 == 0 {
                 widget::refresh(&proxy);
@@ -260,7 +268,7 @@ fn refresh(app: &AppHandle, tray: &tauri::tray::TrayIcon<Wry>) {
     else {
         return;
     };
-    refresh_title(tray, &proxy);
+    refresh_title(app, tray, &proxy);
     widget::refresh(&proxy);
 }
 
@@ -290,6 +298,7 @@ pub fn show_update_available(app: &AppHandle, version: &str) {
         let _ = menu.check_updates.set_enabled(true);
         let _ = menu.check_updates.set_text("Check for Updates…");
     }
+    apply_update_indicator(app, true);
 }
 
 pub fn show_up_to_date(app: &AppHandle) {
@@ -300,6 +309,7 @@ pub fn show_up_to_date(app: &AppHandle) {
         let _ = menu.check_updates.set_enabled(true);
         let _ = menu.install_update.set_enabled(false);
     }
+    apply_update_indicator(app, false);
 }
 
 pub fn is_installing(app: &AppHandle) -> bool {
@@ -307,10 +317,7 @@ pub fn is_installing(app: &AppHandle) -> bool {
         .is_some_and(|state| state.installing.load(Ordering::Acquire))
 }
 
-fn set_installing(app: &AppHandle, version: &str) {
-    if let Some(state) = app.try_state::<TrayState>() {
-        state.installing.store(true, Ordering::Release);
-    }
+pub fn show_installing(app: &AppHandle, version: &str) {
     if let Some(menu) = menu_handles(app) {
         let _ = menu
             .install_update
@@ -320,58 +327,75 @@ fn set_installing(app: &AppHandle, version: &str) {
     }
 }
 
-fn set_install_failed(app: &AppHandle, version: &str) {
-    if let Some(state) = app.try_state::<TrayState>() {
-        state.installing.store(false, Ordering::Release);
-    }
-    show_update_available(app, version);
-}
-
-fn refresh_title(tray: &tauri::tray::TrayIcon<Wry>, proxy: &ProxyClient) {
+fn refresh_title(app: &AppHandle, tray: &tauri::tray::TrayIcon<Wry>, proxy: &ProxyClient) {
+    #[cfg(target_os = "macos")]
+    let app = app.clone();
+    #[cfg(not(target_os = "macos"))]
+    let _ = app;
     let proxy = proxy.clone();
     let tray = tray.clone();
     tauri::async_runtime::spawn(async move {
         let Ok(settings) = proxy.companion_settings().await else {
             return;
         };
-        let Ok(usage) = proxy.usage_summary().await else {
+        let Ok(usage) = proxy.usage_today().await else {
             return;
         };
         let quotas = proxy.quotas().await.unwrap_or(Value::Null);
-        if let Some(title) = render_title(&settings, &usage, &quotas) {
-            let _ = tray.set_title(Some(&title));
-        }
+        let title = render_title(&settings, &usage, &quotas);
+        let _ = tray.set_title(title.as_deref());
+        #[cfg(target_os = "macos")]
+        apply_update_indicator(&app, update_pending(&app));
     });
 }
 
 pub(crate) fn render_title(settings: &Value, usage: &Value, quotas: &Value) -> Option<String> {
+    let settings = settings.get("settings").unwrap_or(settings);
     let metric = settings
-        .pointer("/settings/menuBarMetric")
+        .get("menuBarMetric")
         .and_then(Value::as_str)
         .unwrap_or("tokens");
-    let summary = usage.get("summary").unwrap_or(usage);
-    let quota = quota_percent(quotas);
-    let value = match metric {
-        "requests" => formatting::count(summary.get("requests").and_then(Value::as_i64)),
-        "cost" => formatting::cost(summary.get("estimatedCostUsd").and_then(Value::as_f64)),
-        "quota" => format_percent(quota),
-        "none" => return None,
-        _ => formatting::tokens(summary.get("totalTokens").and_then(Value::as_i64)),
-    };
+    let visible_summary = crate::companion_usage::filtered_summary(usage, settings);
+    let summary = visible_summary.as_ref().unwrap_or(&Value::Null);
+    let quota = quota_percent(quotas, settings);
     let template = settings
-        .pointer("/settings/menuBarTemplate")
+        .get("menuBarTemplate")
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty());
+    let value = match metric {
+        "requests" => formatting::count(
+            summary
+                .get("requests")
+                .and_then(crate::companion_usage::integer),
+        ),
+        "cost" => formatting::cost(summary.get("estimatedCostUsd").and_then(Value::as_f64)),
+        "quota" => format_percent(quota),
+        "none" if template.is_none() => return None,
+        "none" => String::new(),
+        _ => formatting::tokens(
+            summary
+                .get("totalTokens")
+                .and_then(crate::companion_usage::integer),
+        ),
+    };
     let rendered = template
         .map(|value| {
             value
                 .replace(
                     "{requests}",
-                    &formatting::count(summary.get("requests").and_then(Value::as_i64)),
+                    &formatting::count(
+                        summary
+                            .get("requests")
+                            .and_then(crate::companion_usage::integer),
+                    ),
                 )
                 .replace(
                     "{totalTokens}",
-                    &formatting::tokens(summary.get("totalTokens").and_then(Value::as_i64)),
+                    &formatting::tokens(
+                        summary
+                            .get("totalTokens")
+                            .and_then(crate::companion_usage::integer),
+                    ),
                 )
                 .replace(
                     "{costUsd}",
@@ -379,11 +403,19 @@ pub(crate) fn render_title(settings: &Value, usage: &Value, quotas: &Value) -> O
                 )
                 .replace(
                     "{inputTokens}",
-                    &formatting::tokens(summary.get("inputTokens").and_then(Value::as_i64)),
+                    &formatting::tokens(
+                        summary
+                            .get("inputTokens")
+                            .and_then(crate::companion_usage::integer),
+                    ),
                 )
                 .replace(
                     "{outputTokens}",
-                    &formatting::tokens(summary.get("outputTokens").and_then(Value::as_i64)),
+                    &formatting::tokens(
+                        summary
+                            .get("outputTokens")
+                            .and_then(crate::companion_usage::integer),
+                    ),
                 )
                 .replace("{quotaPercent}", &format_percent(quota))
         })
@@ -401,10 +433,16 @@ pub(crate) fn render_title(settings: &Value, usage: &Value, quotas: &Value) -> O
     }
 }
 
-fn quota_percent(value: &Value) -> Option<f64> {
+fn quota_percent(value: &Value, settings: &Value) -> Option<f64> {
     let reports = value.get("reports")?.as_array()?;
     let mut values = Vec::new();
     for report in reports {
+        if crate::companion_usage::hidden(
+            settings,
+            crate::companion_usage::text(report, "provider"),
+        ) {
+            continue;
+        }
         let Some(quota) = report.get("quota") else {
             continue;
         };
@@ -465,6 +503,64 @@ fn tray_anchor(app: &AppHandle) -> tauri::PhysicalPosition<f64> {
 
 #[cfg(test)]
 mod tests {
+    use super::{render_title, tray_icon_bytes};
+    use serde_json::json;
+
+    #[test]
+    fn dotted_tray_variant_is_distinct_and_both_variants_are_png() {
+        let normal = tray_icon_bytes(false);
+        let dotted = tray_icon_bytes(true);
+        assert_eq!(&normal[..8], b"\x89PNG\r\n\x1a\n");
+        assert_eq!(&dotted[..8], b"\x89PNG\r\n\x1a\n");
+        assert_ne!(normal, dotted);
+    }
+
+    #[test]
+    fn icon_only_clears_the_title_but_a_template_and_unavailable_data_keep_their_meaning() {
+        let usage = json!({"summary":{"requests":7,"totalTokens":12}});
+        assert_eq!(
+            render_title(
+                &json!({"settings":{"menuBarMetric":"none"}}),
+                &usage,
+                &json!({})
+            ),
+            None
+        );
+        assert_eq!(
+            render_title(
+                &json!({"settings":{"menuBarMetric":"none","menuBarTemplate":"{requests}"}}),
+                &usage,
+                &json!({})
+            ),
+            Some("7".into())
+        );
+        assert_eq!(
+            render_title(
+                &json!({"settings":{"menuBarMetric":"tokens","hiddenProviders":["hidden"]}}),
+                &usage,
+                &json!({})
+            ),
+            Some("—".into())
+        );
+    }
+
+    #[test]
+    fn title_uses_filtered_whole_counts_and_ignores_hidden_quota_reports() {
+        let settings =
+            json!({"settings":{"menuBarMetric":"requests","hiddenProviders":["hidden"]}});
+        let usage = json!({"summary":{"requests":99},"models":[
+            {"provider":"hidden","model":"m","requests":97},
+            {"provider":"visible","model":"m","requests":2}
+        ]});
+        assert_eq!(
+            render_title(&settings, &usage, &json!({})),
+            Some("2".into())
+        );
+        let settings = json!({"settings":{"menuBarMetric":"quota","hiddenProviders":["hidden"]}});
+        let quotas = json!({"reports":[{"provider":"hidden","quota":{"weeklyPercent":1}}, {"provider":"visible","quota":{"weeklyPercent":75}}]});
+        assert_eq!(render_title(&settings, &usage, &quotas), Some("75%".into()));
+    }
+
     /// This file's own source, read at compile time, with the test module cut off.
     ///
     /// Slicing at the test attribute matters: the assertions below quote the very call names they

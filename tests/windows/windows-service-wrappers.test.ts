@@ -38,12 +38,16 @@ const launcher = (home: string) => join(home, "opencodex-service-launcher.vbs");
 function killsCommandLine(commandLine: string, patterns: readonly string[]): boolean {
   const boundary = /[\s"']/;
   for (const pattern of patterns) {
-    const at = commandLine.toLowerCase().indexOf(pattern.toLowerCase());
-    if (at < 0) continue;
-    const before = at > 0 ? commandLine[at - 1]! : " ";
-    const end = at + pattern.length;
-    const after = end < commandLine.length ? commandLine[end]! : " ";
-    if (boundary.test(before) && boundary.test(after)) return true;
+    let at = 0;
+    while (at < commandLine.length) {
+      at = commandLine.toLowerCase().indexOf(pattern.toLowerCase(), at);
+      if (at < 0) break;
+      const before = at > 0 ? commandLine[at - 1]! : " ";
+      const end = at + pattern.length;
+      const after = end < commandLine.length ? commandLine[end]! : " ";
+      if (boundary.test(before) && boundary.test(after)) return true;
+      at += 1;
+    }
   }
   return false;
 }
@@ -82,13 +86,20 @@ describe("which command lines the wrapper killer stops", () => {
   });
 });
 
+test("a look-alike prefix does not hide the real token behind it", () => {
+  // A first occurrence that is only a glued suffix must not end the scan: the
+  // genuine wrapper path later in the same command line is still a kill match.
+  expect(killsCommandLine("cmd.exe /c " + script(HOME_A) + ".bak ^& " + script(HOME_A), patterns)).toBe(true);
+  expect(killsCommandLine("cmd.exe /c " + script(HOME_A) + ".bak", patterns)).toBe(false);
+});
+
 describe("the generated script still implements that rule", () => {
   test("matchRuleMatchesScript", () => {
     // Pins the JS port above to the shipped PowerShell. If the script stops
     // using ordinal-insensitive IndexOf plus both boundary checks, the port is
     // no longer a faithful model and the cases above prove nothing.
     const ps = windowsWrapperKillScript(patterns);
-    expect(ps).toContain("IndexOf($p, [System.StringComparison]::OrdinalIgnoreCase)");
+    expect(ps).toContain("IndexOf($p, $i, [System.StringComparison]::OrdinalIgnoreCase)");
     expect(ps).toContain("$before = if ($i -gt 0)");
     expect(ps).toContain("$after = if ($end -lt $c.Length)");
     expect(ps).toContain("if ($before -match");
@@ -124,3 +135,121 @@ describe("both teardown paths use the shared killer", () => {
     }
   });
 });
+
+
+describe("scheduler child exit contract", () => {
+  test("zero and failure exits reach the cooldown; only explicit stay-out terminates", async () => {
+    const { buildWindowsServiceScript } = await import("../../src/service/windows-taskxml");
+    for (const cli of ["C:\\ocx\\cli.ts", null]) {
+      const batch = buildWindowsServiceScript({ bun: "C:\\ocx\\bun.exe", bunRuntimeSource: "bundled", cli }, 10100, []);
+      const tail = batch.slice(batch.indexOf(' start --port 10100')).split("\r\n").slice(1);
+      expect(tail.slice(0, 6)).toEqual([
+        'if "%ERRORLEVEL%"=="42" goto stopped',
+        '>>"%OCX_SERVICE_LOG%" echo [%DATE% %TIME%] child exited with code %ERRORLEVEL%; restarting in 5s',
+        'ping -n 6 127.0.0.1 >nul',
+        'goto loop',
+        ':stopped',
+        'endlocal',
+      ]);
+      expect(batch).toContain('set "OCX_WINDOWS_WRAPPER_PROTOCOL=1"');
+      expect(batch).toContain('set "ERRORLEVEL="');
+      expect(batch).toContain('exit /b 0');
+    }
+  });
+});
+
+
+test("stay-out exit code is opt-in for new wrappers, preserving legacy services", async () => {
+  const { serviceStayOutExitCode } = await import("../../src/service/windows-wrapper-exit");
+  expect(serviceStayOutExitCode({})).toBe(0);
+  expect(serviceStayOutExitCode({ OCX_SERVICE: "1" })).toBe(0);
+  expect(serviceStayOutExitCode({ OCX_WINDOWS_WRAPPER_PROTOCOL: "1" })).toBe(0);
+  expect(serviceStayOutExitCode({ OCX_SERVICE: "1", OCX_WINDOWS_WRAPPER_PROTOCOL: "1" })).toBe(42);
+  expect(serviceStayOutExitCode({ OCX_SERVICE: "1", OCX_WINDOWS_WRAPPER_PROTOCOL: "2" })).toBe(0);
+  const cli = read("src/cli/index.ts");
+  const branches = [...cli.matchAll(/if \(decision === "service-stay-out"\) \{([\s\S]*?)\n\s*\}/g)];
+  expect(branches).toHaveLength(3);
+  for (const branch of branches) expect(branch[1]).toContain("serviceStayOutExitCode()");
+});
+
+test.skipIf(process.platform !== "win32")("cmd restarts zero/crash exits and stops on explicit stay-out", async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { spawnSync } = await import("node:child_process");
+  const { buildWindowsServiceScript } = await import("../../src/service/windows-taskxml");
+  const dir = mkdtempSync(join(tmpdir(), "ocx-wrapper-exit-"));
+  try {
+    const batch = buildWindowsServiceScript({ bun: "bun.exe", bunRuntimeSource: "bundled", cli: null }, 10100, []);
+    const tail = batch.slice(batch.indexOf(' start --port 10100')).split("\r\n").slice(1).join("\r\n").split(":restore_backup")[0];
+    for (const code of [0, 1, 42, 43, -1073741510]) {
+      const file = join(dir, "exit.cmd");
+      // Exercise the generated control flow; replace only the cooldown to keep this fast.
+      writeFileSync(file, '@echo off\r\nsetlocal EnableExtensions DisableDelayedExpansion\r\nset "ERRORLEVEL="\r\nset "OCX_SERVICE_LOG=NUL"\r\n'
+        + `cmd /d /c exit ${code}\r\n` + tail.replace("ping -n 6 127.0.0.1 >nul", "rem skip cooldown")
+        + '\r\n:loop\r\nexit /b 99\r\n');
+      const result = spawnSync("cmd.exe", ["/d", "/c", file], { timeout: 5000, env: { ...process.env, ERRORLEVEL: "42" } });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(code === 42 ? 0 : 99);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const date of ["Wed 09/30/2026", "2026-09-30(수)", "2026/09/30 (水)"]) {
+  for (const scenario of ["healthy", "missing bun", "missing cli", "restore bun", "restore cli", "empty backup", "standalone healthy", "standalone missing"] as const) {
+    test.skipIf(process.platform !== "win32")(`cmd prelaunch with ${date}: ${scenario}`, async () => {
+      const { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      const { spawnSync } = await import("node:child_process");
+      const { buildWindowsServiceScript } = await import("../../src/service/windows-taskxml");
+      const dir = mkdtempSync(join(tmpdir(), "ocx-wrapper-locale-"));
+      try {
+        // Every path used by recovery is disposable, including the live package.
+        const pkg = join(dir, "package (test)!");
+        const bun = join(pkg, "bun.cmd");
+        const cli = join(pkg, "src", "cli", "index.ts");
+        const log = join(dir, "service.log");
+        const backup = join(dir, ".ocx-backup-20260930 (test)!", "opencodex");
+        const child = '@echo off\r\necho FAKE-CHILD-STARTED\r\nexit /b 42\r\n';
+        mkdirSync(join(pkg, "src", "cli"), { recursive: true });
+        if (scenario !== "missing bun" && scenario !== "restore bun" && scenario !== "empty backup" && scenario !== "standalone missing") writeFileSync(bun, child);
+        if (scenario !== "missing cli" && scenario !== "restore cli") writeFileSync(cli, "fixture");
+        if (scenario.startsWith("restore") || scenario === "empty backup") {
+          mkdirSync(join(backup, "src", "cli"), { recursive: true });
+          if (scenario !== "empty backup") {
+            writeFileSync(join(backup, "package.json"), "{}");
+            writeFileSync(join(backup, "bun.cmd"), child);
+            writeFileSync(join(backup, "src", "cli", "index.ts"), "fixture");
+          }
+        }
+        const batch = buildWindowsServiceScript({ bun, bunRuntimeSource: "bundled", cli: scenario.startsWith("standalone") ? null : cli }, 10100, []);
+        // Keep the complete generated loop, prelaunch guards and recovery. Replace
+        // environment setup with isolated paths; CALL lets our fake .cmd child
+        // return to the wrapper just as the real Bun executable would.
+        const body = batch.slice(batch.indexOf(":loop\r\n"))
+          .replace(/^"%OCX_BUN%" /m, 'call "%OCX_BUN%" ');
+        const file = join(dir, "wrapper.cmd");
+        writeFileSync(file, ["@echo off", "setlocal EnableExtensions DisableDelayedExpansion", 'set "ERRORLEVEL="',
+          `set "OCX_BUN=${bun}"`, `set "OCX_CLI=${cli}"`, `set "OCX_PKG_DIR=${pkg}"`,
+          `set "OCX_SERVICE_LOG=${log}"`, 'set "OCX_API_TOKEN_FILE=fixture"', body].join("\r\n"));
+        const result = spawnSync("cmd.exe", ["/d", "/c", file], {
+          timeout: 5000, encoding: "utf8", env: { ...process.env, DATE: date, TIME: "12:16:55.17", ERRORLEVEL: "42" },
+        });
+        expect(result.error).toBeUndefined();
+        const started = scenario === "healthy" || scenario === "standalone healthy" || scenario.startsWith("restore");
+        expect(result.status).toBe(started ? 0 : 3);
+        const output = existsSync(log) ? readFileSync(log, "utf8") : "";
+        expect(output.includes("FAKE-CHILD-STARTED")).toBe(started);
+        if (!started) expect(output).toContain(`installation is incomplete: ${scenario === "missing cli" ? "CLI entry" : "bundled Bun"} is missing`);
+        if (scenario.startsWith("restore")) {
+          expect(output).toContain("restored previous install from .ocx-backup-20260930 (test)!");
+          expect(existsSync(join(pkg, "package.json"))).toBe(true);
+        }
+        if (scenario === "empty backup") expect(output).toContain("no restorable backup found");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+}

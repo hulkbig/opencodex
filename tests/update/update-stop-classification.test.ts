@@ -209,6 +209,75 @@ describe("stop failure classification (#3008)", () => {
     }
   });
 
+  test("a silent dial to a port nobody holds any more is dead, not unknown", async () => {
+    // The Tailscale case in miniature: the dial is neither answered nor refused, so it can
+    // only time out, and the port is free by the time the probe asks to bind it. The
+    // fixture accepts the probe's connection, closes its listener, and keeps that one
+    // socket open and silent.
+    const listener = spawn(process.execPath, ["-e", [
+      "const net = require('node:net');",
+      "const server = net.createServer(socket => { server.close(); socket.on('error', () => {}); });",
+      "server.listen(0, '127.0.0.1', () => process.stdout.write(String(server.address().port)));",
+    ].join("\n")], { stdio: ["ignore", "pipe", "ignore"] });
+    const port = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("listener did not report a port")), 10_000);
+      listener.stdout.once("data", chunk => { clearTimeout(timer); resolve(Number(String(chunk))); });
+      listener.once("error", error => { clearTimeout(timer); reject(error); });
+    });
+    try {
+      expect(probeProxyLiveness(port, "127.0.0.1", 400)).toBe("dead");
+    } finally {
+      listener.kill();
+      await new Promise<void>(resolve => listener.once("exit", () => resolve()));
+    }
+  });
+
+  test("a hostname never gets the bind fallback, because the dial and the bind may resolve differently", async () => {
+    // Same fixture as the silent-dial case, but addressed by name: the dial times out and
+    // the port is bindable, yet a name can resolve to other addresses for the bind, so a
+    // free port proves nothing about the endpoint the dial reached. The fixture listens
+    // dual-stack (`::`, falling back to `0.0.0.0` where IPv6 is unavailable) so the dial
+    // is silent whichever address `localhost` resolves to first, instead of being refused
+    // on `::1` and returning `dead` before the hostname rule is reached.
+    const listener = spawn(process.execPath, ["-e", [
+      "const net = require('node:net');",
+      "const server = net.createServer(socket => { server.close(); socket.on('error', () => {}); });",
+      "const report = () => process.stdout.write(String(server.address().port));",
+      "server.once('error', () => { server.removeAllListeners('error'); server.listen(0, '0.0.0.0', report); });",
+      "server.listen({ port: 0, host: '::', ipv6Only: false }, report);",
+    ].join("\n")], { stdio: ["ignore", "pipe", "ignore"] });
+    const port = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("listener did not report a port")), 10_000);
+      listener.stdout.once("data", chunk => { clearTimeout(timer); resolve(Number(String(chunk))); });
+      listener.once("error", error => { clearTimeout(timer); reject(error); });
+    });
+    try {
+      expect(probeProxyLiveness(port, "localhost", 400)).toBe("unknown");
+    } finally {
+      listener.kill();
+      await new Promise<void>(resolve => listener.once("exit", () => resolve()));
+    }
+  });
+
+  test("a reset dial to a held local port stays unknown", async () => {
+    const listener = spawn(process.execPath, ["-e", [
+      "const net = require('node:net');",
+      "const server = net.createServer(socket => socket.destroy());",
+      "server.listen(0, '127.0.0.1', () => process.stdout.write(String(server.address().port)));",
+    ].join("\n")], { stdio: ["ignore", "pipe", "ignore"] });
+    const port = await new Promise<number>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("listener did not report a port")), 10_000);
+      listener.stdout.once("data", chunk => { clearTimeout(timer); resolve(Number(String(chunk))); });
+      listener.once("error", error => { clearTimeout(timer); reject(error); });
+    });
+    try {
+      expect(probeProxyLiveness(port, "127.0.0.1", 400)).toBe("unknown");
+    } finally {
+      listener.kill();
+      await new Promise<void>(resolve => listener.once("exit", () => resolve()));
+    }
+  });
+
   test("the shared decision covers the whole post-stop matrix", () => {
     // This is THE predicate both updaters call, not a copy of it: src/update/index.ts and
     // bin/ocx.mjs each import decidePostStopUpdate. Testing a local reimplementation would

@@ -34,6 +34,9 @@ prints a proposed model and effort per role without writing anything. `--apply` 
 through the same write as `set`, skipping and naming the roles whose model and effort already match.
 See [Auto-assign](/guides/integrations/#auto-assign).
 
+Human-readable suggestion output displays terminal control characters as visible escapes.
+Use `--json` when you need the original suggestion values without presentation escaping.
+
 `ocx agent injection suggest <work>` does the same for the delegation model: it sizes the described
 work, proposes the cheapest sufficient model and an effort from the delegation picker's list, and writes
 nothing unless `--apply` is given, which saves through the same write as `injection set`. See
@@ -305,8 +308,8 @@ remain supported. Use `ocx claude config <status|set> ...` for Claude Code setti
 
 Ensure the proxy is running, then launch opencode with the generated `provider.opencodex` and
 `providers.opencodex` blocks in OpenCode's inline runtime layer (`OPENCODE_CONFIG_CONTENT`). The
-legacy block keeps V1 clients working; the V2 block is the one carrying the selectable
-reasoning-effort variants. Existing inline config is preserved and only those two keys are replaced
+legacy block keeps V1 clients working with variant maps; the V2 block carries native arrays
+for the same reasoning-effort choices and defaults. Existing inline config is preserved and only those two keys are replaced
 for this launch. Global or project `opencode.json` files may be read to warn about an existing
 override, but on-disk files are never modified. Routed models appear as
 `opencodex/<provider>/<model>`. Launching plain `opencode` later behaves exactly as before.
@@ -325,6 +328,11 @@ reference or loopback placeholder — in the selected client's native format.
 
 The proxy must be running; the command resolves its live port, reads `/api/models`, and emits only
 models Codex can currently see.
+
+OpenCode and Kilo exports preserve effective model limits, known capabilities, declared reasoning
+choices and defaults, including metadata inherited by custom rows. Explicit overrides still win;
+unknown capabilities and defaults are not invented. The OpenCode launcher uses the same metadata.
+See [client integrations](/guides/integrations/) for managed refresh and upgrade behavior.
 
 | Flag | Action |
 | --- | --- |

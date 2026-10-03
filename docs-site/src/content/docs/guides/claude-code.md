@@ -255,6 +255,8 @@ trust a local certificate authority in the login keychain. That authority is con
 and its subdomains. Its signing key exists only inside the running OpenCodex process, so every
 OpenCodex restart publishes a fresh authority and macOS asks you to trust it again — approve the
 prompt, or later run `ocx claude desktop picker trust`, after each restart.
+Startup also attempts to remove a legacy on-disk picker signing key before checking whether
+interception is enabled. Cleanup is best-effort and does not enable interception or block startup.
 
 On restart OpenCodex first removes the previous authority from the keychain. If that removal fails
 (for example because you decline the keychain prompt), the picker stays off for this run so two
@@ -271,7 +273,9 @@ or turn it off with `ocx claude desktop picker off`. The dashboard has the same 
 **Claude → Desktop**. After the picker profile is selected, fully quit and reopen Claude Desktop.
 
 Picker mode is part of first-party mode, so the [first-party account risk](#first-party-opt-in)
-applies to it as well.
+applies to it as well. Desktop and CLI catalog rewrites share bounded row and metadata limits:
+if adding routed models would exceed a limit, OpenCodex returns the original Anthropic catalog
+unchanged rather than publishing a partial list.
 
 ### Use opencodex models from the Desktop Code tab (first-party bindings)
 

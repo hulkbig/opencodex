@@ -390,6 +390,7 @@ reasoning models). Custom Providers is a Raycast Pro feature, and Raycast watche
 saved change takes effect without a restart. The format is documented at
 [manual.raycast.com/ai/custom-providers](https://manual.raycast.com/ai/custom-providers). No
 `api_keys` entry is written, so this export is loopback-only and a non-loopback bind is refused.
+Custom display names remain strings in native YAML, including numeric-looking labels such as `.5`.
 
 The MCode, ZCode and Prime exports are loopback-only for the same reason and likewise carry the
 `opencodex-loopback` placeholder rather than a real credential. Prime Agent reads the same

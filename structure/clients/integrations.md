@@ -206,6 +206,12 @@ TOML temporal scalars cannot survive the JSON-cloned merge representation with t
 intact. The common parser refuses documents containing them before either status or mutation
 proceeds, including nested arrays and inline tables. Quoted date strings remain supported.
 
+`src/integrations/serialize.ts` quotes string keys and values that YAML would resolve as
+non-string scalars, including leading-dot decimals such as `.5` and `.5e2`. Raycast's native
+YAML export therefore preserves custom display-name strings just as its JSON document does.
+`tests/clients/integrations-serialize.test.ts` and `tests/clients/raycast-client.test.ts` cover
+the scalar and real-builder round trips.
+
 ## Catalog visibility
 
 Management export and CLI export apply the canonical routed catalog visibility filter before

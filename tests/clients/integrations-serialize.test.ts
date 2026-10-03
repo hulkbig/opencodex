@@ -62,6 +62,27 @@ describe("renderYaml", () => {
     expect(renderYaml({ "needs.quote?": 1 })).toBe('"needs.quote?": 1\n');
   });
 
+  test.each([
+    ".5", ".0", ".5e2", ".5E-2", ".5e+2", "0.", "-0.0", "+12e03", "-2E+05",
+    "0o7", "0x3A", "null", "Null", "NULL", "true", "False", ".inf", "-.Inf", "+.INF", ".NAN",
+  ])("preserves the YAML core scalar spelling %j as a string", value => {
+    // YAML 1.2 core tag resolution applies to plain scalars in maps and sequences,
+    // including keys. A leading-dot decimal is numeric even without a leading digit.
+    const doc = { name: value, [value]: value, sequence: [value, { name: value }] };
+    const text = renderYaml(doc);
+    expect(text).toContain(`name: ${JSON.stringify(value)}\n`);
+    expect(Bun.YAML.parse(text)).toEqual(doc);
+  });
+
+  test.each(["plain_key-1", "provider/model", "./models", "../models", ".config", "model.5", ".5beta", ".5e"])(
+    "keeps the unambiguous token %j plain in keys and values",
+    value => {
+      const doc = { [value]: value, sequence: [value] };
+      expect(renderYaml(doc)).toBe(`${value}: ${value}\nsequence:\n  - ${value}\n`);
+      expect(Bun.YAML.parse(renderYaml(doc))).toEqual(doc);
+    },
+  );
+
   test("empty collections stay on one line", () => {
     expect(renderYaml({ a: {}, b: [] })).toBe("a: {}\nb: []\n");
   });

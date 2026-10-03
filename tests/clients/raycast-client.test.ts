@@ -189,6 +189,16 @@ describe("Raycast client config", () => {
     expect(built.text).not.toContain("api_keys");
   });
 
+  test.each([".5", ".0", ".5e2", ".5E-2"])("native YAML preserves the custom display name %j", displayName => {
+    const built = buildClientConfigText("raycast", context([
+      { namespaced: "mock/half", provider: "mock", id: "half", displayName },
+    ]));
+    const document = built.document as RaycastGeneratedConfig;
+    expect(ourProvider(document).models[0]!.name).toBe(displayName);
+    expect(Bun.YAML.parse(built.text)).toEqual(document as never);
+    expect(JSON.parse(JSON.stringify(document))).toEqual(Bun.YAML.parse(built.text));
+  });
+
   test("the contribution owns the providers element selected by our id", () => {
     const contribution = buildClientContribution("raycast", context());
     expect(contribution.clientId).toBe("raycast");

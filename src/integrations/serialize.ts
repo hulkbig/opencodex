@@ -58,6 +58,8 @@ function yamlString(value: string): string {
   const plainSafe = value.length > 0
     && value.trim() === value
     && /^[A-Za-z_./][A-Za-z0-9_./-]*$/u.test(value)
+    // Leading-dot decimals, with an optional exponent, are YAML 1.2 floats.
+    && !/^\.[0-9]+(?:[eE][-+]?[0-9]+)?$/u.test(value)
     && !/^(?:null|true|false|yes|no|on|off|~|\.nan|[-+]?\.inf)$/iu.test(value);
   return plainSafe ? value : JSON.stringify(value);
 }

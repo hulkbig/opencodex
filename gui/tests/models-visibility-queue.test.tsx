@@ -161,6 +161,17 @@ test("a saved write whose reconciliation fails never publishes success", async (
   expect(container.querySelector(".action-toast")?.className).toContain("notice-err");
 });
 
+for (const response of [() => new Response(null, { status: 204 }), () => new Response("saved")]) {
+  test("a successful visibility write without JSON reconciles without a network error", async () => {
+    await mount();
+    await click("a");
+    await settle(response());
+    expect(pressed("a")).toBe("false");
+    expect(container.querySelector(".action-toast")?.className).toContain("notice-ok");
+    expect(container.querySelector(".action-toast")?.textContent).not.toContain("Network");
+  });
+}
+
 test("a click during reconciliation survives the old read and starts another ordered write", async () => {
   await mount();
   await click("a");

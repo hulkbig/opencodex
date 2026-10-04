@@ -77,7 +77,7 @@ describe("Droid managed reasoning defaults", () => {
     const path = install();
     expect(applyIntegration({ ...input(), droidReasoningDefaults: { "mock/chat": "high" } }).ok).toBe(true);
     const changedModel: ExportModel = {
-      ...MODEL, displayName: "Renamed Chat", inputModalities: ["text", "image"], reasoningEfforts: ["low"],
+      ...MODEL, displayName: "Renamed Chat", inputModalities: ["text", "image"], reasoningEfforts: ["high"],
     };
     const config = { ...CONFIG, port: 10101 };
     const results = await refreshOwnedCatalogIntegrations({
@@ -90,6 +90,31 @@ describe("Droid managed reasoning defaults", () => {
       extraHeaders: { [HEADER]: "high" },
     }]);
     expect(readOwnedDroidReasoningDefaults(input([changedModel], { port: 10101, config }))).toEqual({ "mock/chat": "high" });
+  });
+
+  test.each([
+    ["incompatible", ["low"]],
+    ["empty", []],
+    ["unknown", undefined],
+  ] as const)("refresh drops inherited defaults for a %s effort ladder and preserves compatible peers", async (_kind, efforts) => {
+    const path = install();
+    const peer: ExportModel = { ...MODEL, namespaced: "mock/peer", id: "peer" };
+    expect(applyIntegration({ ...input([MODEL, peer]), droidReasoningDefaults: {
+      "mock/chat": "high", "mock/peer": "low",
+    } }).ok).toBe(true);
+    const changedModel: ExportModel = { ...MODEL, reasoningEfforts: efforts === undefined ? undefined : [...efforts] };
+    const models = [changedModel, peer];
+    expect(readOwnedDroidReasoningDefaults(input(models))).toEqual({ "mock/peer": "low" });
+    expect(readIntegrationState(input(models)).state).toBe("stale");
+
+    expect(await refreshOwnedCatalogIntegrations({
+      models, config: CONFIG, port: 10100, env: {}, home, store,
+    }, ["droid"])).toEqual([{ client: "droid", ok: true, changed: true }]);
+    const rows = settings(path).customModels;
+    expect(rows.find(row => row.model === "mock/chat")).not.toHaveProperty("extraHeaders");
+    expect(rows.find(row => row.model === "mock/peer")).toMatchObject({ extraHeaders: { [HEADER]: "low" } });
+    expect(readOwnedDroidReasoningDefaults(input(models))).toEqual({ "mock/peer": "low" });
+    expect(readIntegrationState(input(models)).state).toBe("current");
   });
 
   test.each([

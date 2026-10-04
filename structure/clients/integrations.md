@@ -73,13 +73,15 @@ same path and competing-settings checks as status, including pre-resolved paths;
 an ambiguous legacy model ID or managed endpoint suppresses the projected map.
 
 Preview and apply accept optional `droidReasoningDefaults`. Omission preserves
-owned defaults; an empty map clears them. A supplied map is validated against the
+compatible owned defaults; an empty map clears them. A supplied map is validated against the
 same roster used to build the contribution, and the contribution participates in
 the preview fingerprint and frozen mutation input. Refresh preserves defaults only
-while the exact namespaced selector remains in the roster. Provider, model, and
+while the exact namespaced selector remains in the roster and its current effort
+list includes the saved value. Unsupported defaults are omitted from status and
+removed from owned rows on refresh. Provider, model, and
 combo alias names are mutable selectors rather than stable identities, so renaming
 one removes the old managed row and its default; the replacement row starts without
-a default. Ordinary refresh omits the map unless the user has edited it, so an
+a default. Refresh and Save / review changes omit the map unless the user has edited it, so an
 unsupported saved value does not block unrelated refresh. Removing models uses the
 ordinary removal preview. Disable and restore remove or restore the rows and their
 defaults as one owned value.
@@ -580,3 +582,5 @@ complete ownership, exact Cline paths and result fingerprints before either nati
 Native pair writes replace the named directory entries without following final symlinks. A symlink
 present at validation is refused, and one exchanged into place during a mutation is refused rather
 than redirecting OpenCodex's write outside Cline's settings directory.
+
+Routed `ocx claude` launches apply opt-in `claudeCode.subagentModelForce` via independent user-wins defaults for `CLAUDE_CODE_SUBAGENT_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`. Native launches add neither; plain Claude and persistent settings remain unchanged. Claude Code 2.1.257+ implements force, excluding forks and inherit-model skills; main and small-fast models remain separate.

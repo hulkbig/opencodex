@@ -181,7 +181,7 @@ For a custom usage interval, the server must confirm the exact requested start a
 If an older running proxy does not support those bounds, the dashboard and CLI reject its report;
 upgrade and restart that proxy before retrying. Resetting a manual model price affects only that
 model, preserving other rates saved independently.
-The **Usage** summary and Models/Providers tables show end-to-end output throughput from usage history for the selected range and filters: summed output tokens divided by summed wall-clock seconds, not an average of individual rates. The sample count is measured attempts (or requests for legacy rows without attempts); samples lacking positive finite output tokens or duration are excluded. An em dash means no sample qualified. This includes pre-decode waiting and is not estimated decode speed.
+The **Usage** summary and Models/Providers tables show end-to-end output throughput from usage history for the selected range and filters: summed output tokens divided by summed wall-clock seconds, not an average of individual rates. The sample count is measured attempts (or requests for legacy rows without attempts); samples lacking positive finite output tokens or duration are excluded. An em dash means no sample qualified or the server returned an unusable rate. This includes pre-decode waiting and is not estimated decode speed.
 
 The **Usage** Models and Providers tables show the estimated priced portion for each row. Requests
 without a matching price or usable usage are counted as excluded beside that amount when the proxy

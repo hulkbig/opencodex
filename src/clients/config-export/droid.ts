@@ -68,7 +68,7 @@ export function droidDefaultsFromOwnedRows(
   document: unknown,
   fragmentPaths: readonly (readonly string[])[],
 ): DroidReasoningDefaults {
-  const exportableModels = new Set(droidReasoningModels(ctx.models).map(model => model.model));
+  const exportableModels = new Map(droidReasoningModels(ctx.models).map(model => [model.model, model.efforts]));
   const defaults: DroidReasoningDefaults = {};
   for (const path of fragmentPaths) {
     if (path.length !== 2 || path[0] !== "customModels") continue;
@@ -79,8 +79,9 @@ export function droidDefaultsFromOwnedRows(
     const headers = current.extraHeaders;
     if (!headers || typeof headers !== "object" || Array.isArray(headers)) continue;
     const header = headers as Record<string, unknown>;
-    if (typeof header[DROID_DEFAULT_EFFORT_HEADER] !== "string") continue;
-    defaults[current.model] = header[DROID_DEFAULT_EFFORT_HEADER] as string;
+    const effort = header[DROID_DEFAULT_EFFORT_HEADER];
+    if (typeof effort !== "string" || !exportableModels.get(current.model)?.includes(effort)) continue;
+    defaults[current.model] = effort;
   }
   return defaults;
 }

@@ -253,7 +253,7 @@ A private per-dispatch identity generation fences the diagnostic independently o
 quota metadata. Both snapshot and account DTO publication omit externally invalidated
 attempts; the generation itself is never serialized or stored in the quota cache.
 The CLI reconstructs the object using a fixed vocabulary and bounded numeric HTTP
-status, so an unexpected management response cannot add raw upstream material.
+status, so an unexpected management response cannot add raw upstream material. An `http_error` may carry `code` only from `CODEX_TERMINAL_AUTH_CODES` (`src/codex/quota-refresh-outcome.ts`; e.g. `token_invalidated` after a plan change revokes the session), and a failed read keeps the main row's last-known plan. Reauth attribution uses current terminal-auth evidence behind the same generation fence; a transient HTTP401 diagnostic does not replace an existing refresh-failure cause.
 
 > Decision record: [ADR-0078](decisions/ADR-0078-usage-accounting.md)
 
@@ -283,6 +283,7 @@ the exact revision that was copied, and then discards the Logs ring, the retaine
 request-history index so no surface serves rows the ledger no longer has.
 `src/usage/summary.ts` turns that file into the `/api/usage` shape — totals, daily zero-filled
 grid, model and provider breakdowns, and `measured / reported / unreported / unsupported / estimated` counts. Each scope also aggregates end-to-end output throughput (#6309): measured output tokens and wall-clock `durationMs` are summed over attempts reporting both, exposing `throughputTokensPerSec` — a token-sum-over-duration-sum, never a mean of per-request rates. `throughputSamples` counts qualifying attempts (legacy rows without attempts contribute one); nonpositive or nonfinite tokens/timing are excluded. The Usage summary and Models/Providers tables display the rate and sample basis, or unavailable when none qualify.
+All three throughput displays use the same finite-number guard as their tooltip; malformed or nonfinite rates are unavailable rather than formatted.
 The management route scans the ledger from its beginning in fixed 1 MiB chunks on a
 cold rebuild, then retains compact numeric aggregate state and resumes at the last verified LF for
 ordinary appends. It does not retain the full input or a normalized object for every request, and
@@ -333,7 +334,7 @@ selectors, a vendor-only inferred price is unavailable; exact provider and user 
 eligible. Missing trace evidence is not reconstructed from today's configuration. Provider-detail
 model shares use that provider's token total, not the global total. Unknown reserved `policy/`
 selectors are rejected before upstream dispatch; historical rows remain unchanged.
-Expected-price overlays are estimates, not billing reproductions: the Z.AI GLM rows (`zai`, `zhipu-bigmodel`, `zhipu-bigmodel-coding`, `zhipu-bigmodel-responses`) display the published z.ai USD list price on surfaces that actually bill by Coding Plan subscription or CNY-tiered domestic PAYG, and every such row is marked `verified-derived` so the estimate flag reaches the UI.
+Expected-price overlays are estimates, not billing reproductions: the Z.AI GLM rows (`zai`, `zhipu-bigmodel`, `zhipu-bigmodel-coding`, `zhipu-bigmodel-responses`) display the published z.ai USD list price on surfaces that actually bill by Coding Plan subscription or CNY-tiered domestic PAYG, and every such row is marked `verified-derived` so the estimate flag reaches the UI. Antigravity Claude Sonnet and Opus 5.5 base/tier overlays in `src/usage/expected-prices.ts` likewise use Anthropic reference prices with `verified-derived`, so even reported tokens retain an estimated-cost flag.
 
 The management API retains the compact accumulator plus bounded query summaries; it never retains
 normalized per-request rows after a response. File identity changes, shrinkage, same-size metadata

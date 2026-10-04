@@ -93,6 +93,29 @@ Operational contract when enabled:
 
 See [Configuration](/reference/configuration/providers/#anthropicaccountpool-experimental).
 
+### Native Messages with account pooling
+
+An enabled Anthropic account pool prefers native Messages for eligible direct Anthropic routes
+when neither native rollout flag explicitly disables that path. In Providers → Anthropic →
+Account pooling → **How account selection works**, **Preserve native Claude requests** stores
+`anthropicAccountPool.nativeMessages` (default true). Turning it off selects the legacy bridge
+for pooled requests. With pooling off, the explicit native rollout settings keep their behavior.
+
+Explicit `protocols.rollout.managedMessagesNative: false` disables both native paths;
+`managedMessagesNativeOAuth: false` disables native OAuth. Invalid present settings fail closed.
+The checkbox shows the saved preference, so an enabled checkbox does not override these flags
+or a route that requires proxy translation. Native requests retain history/cache breakpoints,
+session affinity, model routes, pause/cooldown exclusions and bounded pre-output recovery.
+
+Recognized native CLI and Desktop Code requests retain their billing/identity preamble and
+supported feature beta headers. Generated requests keep the SDK identity shape. Declared custom
+tools use consistent names across deferred references and inline additions/removals, while
+arguments, schemas and cache markers remain unchanged. Ambiguous declarations are rejected.
+An account switch may start a cold cache; this does not transfer caches or guarantee cache hits.
+For inline tool changes in system messages, send the required `inline-tools-2026-09-15` beta;
+the first-party native builder preserves it with typed blocks independently of client recognition.
+See [Claude’s inline tool contract](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages).
+
 ## Quickstart
 
 ```bash
@@ -266,6 +289,11 @@ picker lists Anthropic's own models until the removal succeeds. OpenCodex rememb
 still needs removal and retries on the next restart; `ocx claude desktop picker status` shows the
 picker as unavailable meanwhile.
 
+Picker mode allows up to 64 KiB of headers on incoming requests and ordinary HTTP
+responses, preserving browser session cookies. Larger upstream response headers return
+502 and log `upstream:headers-too-large`, without cookie values or request paths.
+Upgraded connections continue to relay bytes directly after the request handshake.
+
 While picker mode is on, Claude Desktop reaches the network through OpenCodex. If OpenCodex stops,
 Desktop is offline until you fully restart it or turn picker mode off. Check the state with
 `ocx claude desktop picker status`; use `ocx claude desktop picker trust` to repeat the trust step,
@@ -317,8 +345,9 @@ The UI distinguishes uncertainty about whether settings still point at its proxy
   [Model picker in the CLI](#model-picker-in-the-cli). You can also bind a built-in Anthropic
   model id to a route (`ocx claude desktop bind`, above) or use `modelMap`.
 - `ANTHROPIC_SMALL_FAST_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL` are chosen by the CLI before the
-  request is sent; set them in `settings.json` yourself if a sidecar or subagent should use a
-  mapped id.
+  request is sent. Plain first-party `claude` uses your `settings.json` values. Routed
+  `ocx claude` also offers the [subagent force setting](#forced-claude-code-subagent-model)
+  on the Subagents page and through the CLI.
 - `ocx claude` and first-party coexist: a session started with `ocx claude` talks to
   `ANTHROPIC_BASE_URL` (plain HTTP on loopback), which `HTTPS_PROXY` does not cover, so that
   process reaches OpenCodex directly and the proxy simply sees no traffic from it.
@@ -599,6 +628,15 @@ Three config states:
 
 The compaction value is adjustable on the Claude page. **Warning:** raising it past a model's real
 window breaks that model — the chat errors out before the summary can fire.
+
+A model's advertised context window does not guarantee that a tool-heavy request fits the
+upstream input limit. A classified input-limit rejection reaches Claude Code as
+`invalid_request_error` with `context_length_exceeded`; a non-streaming response uses HTTP 400
+instead of a retryable 502. Reduce the current input or compact earlier. If `/compact` also
+exceeds the limit, preserve the original history and try compacting a fork with fewer enabled
+tool or MCP schemas, if your client supports that workflow. Recovery still depends on the
+reduced request fitting the upstream limit. A `[1m]` marker or larger client accounting setting
+does not raise that limit, and OpenCodex does not silently remove history or tools to make it fit.
 
 Sub-1M native Anthropic models are never auto-marked. Values you export yourself always win (the
 proxy uses YOUR value to decide which models are safe to mark). Invalid hand-edited config values
@@ -969,3 +1007,17 @@ the confirmed obsolete token file and applying first-party mode again; never del
 ### First-party picker context markers
 
 The Desktop Code-tab picker adds `[1m]` to routed models whose authoritative context window is at least one million tokens, so Claude uses its 1M accounting instead of the smaller custom-model fallback. Labels, profile order, and provider routes stay unchanged. Unknown and sub-million windows remain unmarked, including native long-window opt-ins: the picker cannot guarantee that a Desktop or remote runner receives the matching compaction environment. The paired auto-context setup for `ocx claude` is unchanged. An existing conversation keeps its saved selector until you select the model again from the refreshed picker.
+
+### Forced Claude Code subagent model
+
+The Subagents page offers **Force all subagents onto one model**, off by default. Select an exposed roster-style id, such as `combo/tev-auto`, then enable the switch. The roster is offered first; unavailable saved roster entries cannot be force targets.
+
+`ocx agent subagents force combo/tev-auto` sets `claudeCode.subagentModelForce`; `ocx agent subagents force -` clears it. `ocx agent status` reports the setting. `GET /api/subagent-models` returns `force`, `forceAvailable`, and `forceStatus`; `PUT` accepts `{ "force": "combo/tev-auto" }` or `{ "force": null }` without changing the roster. Omitting `force` leaves it unchanged. Invalid or unexposed targets are rejected on write; stale targets are reported and skipped at launch.
+
+This takes effect on the **next routed `ocx claude` launch**, injecting `CLAUDE_CODE_SUBAGENT_MODEL` as an explicit proxy alias (with `[1m]` only for an authoritative million-token window; native Claude targets use a reversible native alias) and `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`. Each nonempty shell-exported variable independently wins. Native launches inject neither variable; plain `claude` is not affected. No plugin files or `settings.json` are modified by this setting.
+
+Claude Code **2.1.257 or newer** is required for FORCE. Plugin and built-in agents (including Explore/Plan) and per-call model arguments are overridden. Forks and subagent skills with `model: inherit` keep the main conversation model. The main loop and Haiku/small-fast sidecars are unaffected. Existing roster files remain available.
+
+The dashboard warns about old or unknown CLI versions, unavailable targets, and either variable already present in `settings.json` → `env` (which overrides launch env). Detection is read-only and server-local: it cannot inspect another launch shell, another machine, or project-local settings. An unknown result is not proof of force support.
+
+Explicit gateway selectors on a generated agent request take precedence over its legacy `ocx-route` fallback, even if the saved force setting changes after launch. For shell or settings overrides of generated roster agents, use an explicit gateway alias; bare Claude ids retain the older-client fallback behavior. Native aliases restore their bare model before the existing credential and model-map checks. Connected launches validate force targets against a fresh authenticated gateway catalog; failed discovery skips automatic force injection, and cached context windows alone never prove availability.

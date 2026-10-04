@@ -311,9 +311,10 @@ warmup remains conservative and does not spend paid credits to validate an exhau
 
 Credit parsing, expiry, partial updates and reset-ticket separation are covered in
 `tests/codex-integration/codex-quota-parser-parity.test.ts`; selection and bulk-pause behavior
-are covered in `tests/codex-integration/codex-routing.test.ts` and
-`tests/codex-integration/codex-auth-api.test.ts` and
-`tests/codex-integration/codex-cooldown-recovery.test.ts`.
+are covered in `tests/codex-integration/codex-credits-after-limit.test.ts` and
+`tests/codex-integration/codex-credits-after-limit-main.test.ts`, alongside the general routing,
+bulk-pause and recovery suites `tests/codex-integration/codex-routing.test.ts`,
+`tests/codex-integration/codex-auth-api.test.ts` and `tests/codex-integration/codex-cooldown-recovery.test.ts`.
 
 ### Quota cache and short-window history
 

@@ -1,3 +1,5 @@
+import { isSubagentModelEntry, rawSubagentModelForce } from "./subagent-models";
+import { protocolConfigSchema } from "./schema/config-schema";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -100,9 +102,11 @@ function validFileConfigDiagnostics(config: OcxConfig, rawParsed: unknown): Conf
   // the entire config, which would hide unrelated providers/accounts. The next
   // ordinary save persists the normalized absence.
   const syncDisabledReason = nativeSubagentSyncDisabledReason(config, rawParsed);
+  const rawForce = rawSubagentModelForce(rawParsed);
   const rawEffort = rawClaudeSubagentEffort(rawParsed);
   const normalized = normalizeClaudeSubagentEffort(normalizeNativeSubagentSync(config, rawParsed), rawParsed);
   const warnings = configPlaceholderWarnings(normalized);
+  if (rawForce !== undefined && !isSubagentModelEntry(rawForce)) warnings.push("claudeCode.subagentModelForce ignored: expected a safe roster-style model id");
   if (normalized.chatgptDesktop?.appServerShim === true && process.platform !== "darwin") {
     warnings.push("chatgptDesktop.appServerShim is experimental and macOS only; ignored on this platform");
   }
@@ -644,7 +648,19 @@ export function validateConfigCandidate(value: unknown): { ok: true; config: Ocx
   if (memoryModels !== undefined && !memoryModelsSchema.safeParse(memoryModels).success) {
     return { ok: false, error: "schema_invalid: memoryModels: requires a nonblank model and an optional declared reasoningEffort per configured phase, and no other fields" };
   }
-  const routeValue = (rawConfigRecord(value)?.anthropicAccountPool as Record<string, unknown> | undefined)?.routes;
+  const protocols = rawConfigRecord(value)?.protocols;
+  if (protocols !== undefined && !protocolConfigSchema.safeParse(protocols).success) {
+    return { ok: false, error: "schema_invalid: protocols: expected valid protocol policy and boolean rollout flags" };
+  }
+  const rawAnthropicPool = rawConfigRecord(value)?.anthropicAccountPool;
+  const anthropicPool = rawConfigRecord(rawAnthropicPool);
+  if (rawAnthropicPool !== undefined && !anthropicPool) {
+    return { ok: false, error: "schema_invalid: anthropicAccountPool: must be an object" };
+  }
+  if (anthropicPool && Object.hasOwn(anthropicPool, "nativeMessages") && typeof anthropicPool.nativeMessages !== "boolean") {
+    return { ok: false, error: "schema_invalid: anthropicAccountPool.nativeMessages: must be a boolean" };
+  }
+  const routeValue = anthropicPool?.routes;
   if (routeValue !== undefined) {
     const parsed = parseAnthropicModelRoutes(routeValue);
     if (!parsed.ok) return { ok: false, error: `schema_invalid: anthropicAccountPool.routes: ${parsed.error}` };
@@ -652,6 +668,7 @@ export function validateConfigCandidate(value: unknown): { ok: true; config: Ocx
   const boundaryError = blockedModelRedirectsError(value)
     ?? compactionRecoveryConfigError(value) ?? configReasoningPinsConfigError(value)
     ?? blankHostnameError(value)
+    ?? (rawSubagentModelForce(value) !== undefined && !isSubagentModelEntry(rawSubagentModelForce(value)) ? "schema_invalid: claudeCode.subagentModelForce: expected a safe roster-style model id" : null)
     ?? claudeSubagentEffortError(value)
     ?? appOwnedMemoryBudgetError(value)
     ?? upstreamHostCircuitThresholdError(value)

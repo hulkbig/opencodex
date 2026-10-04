@@ -7,6 +7,11 @@ import * as configModule from "../../src/config";
 import { forceRefreshOAuthAccessSnapshot, getValidAccessTokenSnapshot } from "../../src/oauth";
 import { credentialGeneration, getAccountSet, getAuthStorePath, saveCredential, setAccountPaused, setActiveAccount } from "../../src/oauth/store";
 import { startServer } from "../../src/server";
+import { handleResponses } from "../../src/server/responses";
+import type { ConsumedComboFailure } from "../../src/server/responses/core-options";
+import { ADAPTER_REGISTRY } from "../../src/adapters/registry";
+import * as requestPacing from "../../src/providers/request-pacing";
+import { createRequestExecutionBudget } from "../../src/lib/request-execution-budget";
 import { ANTIGRAVITY_VALIDATION_REQUIRED_PREFIX } from "../../src/adapters/google-errors";
 import { readUsageEntries } from "../../src/usage/log";
 import { clearGenericFailoverHealth, eligibleFailoverAccounts, genericFailoverRetryAfterSeconds, rotateAntigravityAccountOnAuthRefusal } from "../../src/oauth/generic-account-failover";
@@ -333,6 +338,78 @@ function installOAuthFetch(
 }
 
 describe("Google Antigravity OAuth upstream 401 replay", () => {
+  for (const comboAttempt of [false, true]) {
+    test.each(["build", "admission"])(`preserved verify 403 uses common delivery after %s failure (combo=${comboAttempt})`, async failurePoint => {
+      await seedOAuth();
+      const failedId = getAccountSet("google-antigravity")!.activeAccountId;
+      const siblingId = await seedSibling();
+      const config = antigravityConfig();
+      config.providers["google-antigravity"]!.reasoningEfforts = ["low", "high"];
+      saveConfig(config);
+      const secret = ["sk", "antigravity", "refusal", "secret", "canary"].join("-");
+      const observed = installOAuthFetch([
+        { status: 403, message: `Please verify your account to continue. Unsupported reasoning effort high. ${secret}` },
+        200,
+      ]);
+      const budget = createRequestExecutionBudget();
+      const consumed: ConsumedComboFailure[] = [];
+      let injectedFailures = 0;
+      const create = ADAPTER_REGISTRY.google.create;
+      const withSlot = requestPacing.withProviderRequestSlot;
+      ADAPTER_REGISTRY.google.create = (provider, context) => {
+        const adapter = create(provider, context);
+        if (failurePoint === "build" && provider.apiKey === "access-b") {
+          adapter.buildRequest = async () => {
+            injectedFailures += 1;
+            throw new Error("replacement-build-canary");
+          };
+        }
+        return adapter;
+      };
+      const rejectSiblingSlot: typeof requestPacing.withProviderRequestSlot = async (name, provider, model, signal, send) => {
+        if (failurePoint === "admission" && provider.apiKey === "access-b") {
+          injectedFailures += 1;
+          throw new Error("replacement-admission-canary");
+        }
+        return withSlot(name, provider, model, signal, send);
+      };
+      const slotSpy = spyOn(requestPacing, "withProviderRequestSlot").mockImplementation(rejectSiblingSlot);
+      try {
+        const request = new Request("http://127.0.0.1/v1/responses", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model: "google-antigravity/gemini-3.8-flash", input: "hello", reasoning: { effort: "high" } }),
+        });
+        const response = await handleResponses(request, config, { provider: "google-antigravity", model: "gemini-3.8-flash" }, {
+          comboAttempt, sendBudget: budget, onConsumedComboFailure: failure => consumed.push(failure),
+        });
+        const body = await response.text();
+        expect(injectedFailures).toBe(1);
+        expect(response.status).toBe(403);
+        expect(observed.chatAuth).toEqual(["Bearer rejected-access"]);
+        expect(observed.counts.refresh).toBe(0);
+        expect(budget.used).toBe(1);
+        expect(body).toContain("verify your account");
+        expect(body).not.toContain(secret);
+        expect(body).not.toContain("replacement-build-canary");
+        expect(body).not.toContain("replacement-admission-canary");
+        expect(consumed).toHaveLength(comboAttempt ? 1 : 0);
+        expect(JSON.parse(body).error).toMatchObject({ type: "permission_error", code: "permission_denied" });
+        if (comboAttempt) {
+          expect(consumed[0]!.response.status).toBe(403);
+          expect(consumed[0]!.response.headers.get("content-type")).toBe("application/json");
+          expect(consumed[0]!.classificationText).toContain("verify your account");
+          expect(consumed[0]!.classificationText).not.toContain(secret);
+        }
+        const rows = getAccountSet("google-antigravity")!.accounts;
+        expect(rows.find(row => row.id === failedId)).toMatchObject({ needsReauth: true, needsReauthReason: "verify_account" });
+        expect(rows.find(row => row.id === siblingId)?.needsReauth).toBeUndefined();
+      } finally {
+        slotSpy.mockRestore();
+        ADAPTER_REGISTRY.google.create = create;
+      }
+    });
+  }
+
   test.each([1, 2])("verify 403 survives when quarantine persistence fails in a %i-account pool", async count => {
     await seedOAuth();
     if (count === 2) await seedSibling();

@@ -57,7 +57,9 @@ export function useModelVisibility(apiBase: string, options: Options) {
           if (current.active) {
             if (!response.ok) error = "models.saveFailed";
             else {
-              const body: unknown = await response.json();
+              // Integration refresh details are optional; a successful empty/legacy response
+              // still reconciles visibility through the authoritative catalog read below.
+              const body: unknown = await response.json().catch(() => undefined);
               if (current.active) callbacks.current.onResponse(body);
             }
           }

@@ -351,9 +351,7 @@ function FileIntegrationControls({
             : status.droidReasoning.defaults}
           disabled={pending || plannedMutation !== null}
           onChange={values => setDroidReasoningDraft({ scopeKey, values })}
-          onReview={() => void requestMutation("apply", (droidReasoningDraft?.scopeKey === scopeKey
-            ? droidReasoningDraft.values
-            : status.droidReasoning?.defaults) ?? {})}
+          onReview={() => void requestMutation("apply")}
         />
       )}
 

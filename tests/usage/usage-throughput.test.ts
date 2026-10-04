@@ -108,6 +108,7 @@ describe("usage throughput aggregation (#6309)", () => {
         }),
         entry({
           ts: FIXED_NOW - 1,
+          model: "gpt-5.5-mini",
           usageStatus: "reported",
           usage: { inputTokens: 10, outputTokens: 300 },
           durationMs: 10,
@@ -121,6 +122,13 @@ describe("usage throughput aggregation (#6309)", () => {
     expect(sum.providers[0]?.throughputSamples).toBe(2);
     expect(sum.summary.throughputTokensPerSec).toBeCloseTo(400 / 30, 9);
     expect(sum.summary.throughputSamples).toBe(2);
+    expect(sum.models).toHaveLength(2);
+    expect(sum.models.find(row => row.model === "gpt-5.5")).toMatchObject({
+      throughputTokensPerSec: 10, throughputSamples: 1,
+    });
+    expect(sum.models.find(row => row.model === "gpt-5.5-mini")).toMatchObject({
+      throughputTokensPerSec: 15, throughputSamples: 1,
+    });
   });
 });
 

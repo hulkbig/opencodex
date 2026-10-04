@@ -87,6 +87,53 @@ describe("Windows npm update invocation", () => {
     }, { cwd: home, exists: () => true })).toBeNull();
   });
 
+  test.each(["nodejs", "nodejs-lts"])("canonicalizes only the short-home alias for Scoop %s persisted bins", appName => {
+    const physicalHome = "C:\\Users\\Runner Administrator";
+    for (const home of ["C:\\Users\\RUNNER~1", physicalHome]) {
+      const app = `${home}\\scoop\\apps\\${appName}`;
+      const physicalApp = `${physicalHome}\\scoop\\apps\\${appName}`;
+      const current = `${app}\\current`;
+      const version = `${physicalApp}\\24.1.0`;
+      const entry = `${current}\\bin`;
+      const candidate = `${entry}\\npm.cmd`;
+      const expectedPersist = `${home}\\scoop\\persist\\${appName}\\bin`;
+      const physicalPersist = `${physicalHome}\\scoop\\persist\\${appName}\\bin`;
+      const cwdAlias = "C:\\launch-alias";
+      const baseline = new Map<string, string>([
+        [home, physicalHome], [app, physicalApp], [current, version],
+        [entry, physicalPersist], [candidate, `${physicalPersist}\\npm.cmd`],
+        [expectedPersist, physicalPersist], [physicalPersist, physicalPersist],
+        [cwdAlias, physicalHome],
+      ]);
+      const resolve = (overrides: Array<[string, string | undefined]> = []) => {
+        const paths = new Map<string, string | undefined>(baseline);
+        for (const [from, to] of overrides) paths.set(from, to);
+        return resolveNpmCommand("win32", { USERPROFILE: home, PATH: entry, PATHEXT: ".CMD" }, {
+          cwd: cwdAlias, exists: path => path === candidate,
+          realpath: path => {
+            const target = paths.get(path);
+            if (target === undefined) throw new Error("unresolved synthetic path");
+            return target;
+          },
+        });
+      };
+      expect(resolve()).toBe(candidate);
+      for (const redirected of [`${physicalHome}\\other-bin`, "D:\\another-home\\bin"]) {
+        // Even resolving the expected persist path reaches the attacker target:
+        // accepting that result would silently redefine the trusted suffix.
+        expect(resolve([[entry, redirected], [candidate, `${redirected}\\npm.cmd`],
+          [expectedPersist, redirected], [physicalPersist, redirected]])).toBeNull();
+      }
+      expect(resolve([[candidate, `${physicalHome}\\elsewhere\\npm.cmd`]])).toBeNull();
+      expect(resolve([[current, "D:\\outside-app"]])).toBeNull();
+      expect(resolve([[current, physicalApp]])).toBeNull();
+      expect(resolve([[cwdAlias, version]])).toBeNull();
+      expect(resolve([[cwdAlias, physicalPersist]])).toBeNull();
+      expect(resolve([[home, "D:\\different-home"]])).toBeNull();
+      expect(resolve([[home, undefined]])).toBeNull();
+    }
+  });
+
   test.skipIf(process.platform !== "win32")("resolves real Scoop junctions but rejects resolved cwd and redirected targets", () => {
     const home = mkdtempSync(join(tmpdir(), "ocx-scoop-node-"));
     try {

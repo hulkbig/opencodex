@@ -211,8 +211,12 @@ function cacheHitRateTitle(model: UsageModel, locale: Locale, t: TFn): string | 
   });
 }
 
+function hasThroughput(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 function throughputTitle(row: { throughputTokensPerSec?: number; throughputSamples?: number }, t: TFn): string {
-  return Number.isFinite(row.throughputTokensPerSec)
+  return hasThroughput(row.throughputTokensPerSec)
     ? t("usage.throughput.title", { samples: row.throughputSamples ?? 0 })
     : t("usage.throughput.unmeasured");
 }
@@ -498,7 +502,7 @@ function UsageSummaryCards({
     </div>
       <div className="usage-cost-row" role="note" title={throughputTitle(summary, t)}>
         <span className="muted">{t("usage.col.tokPerSec")}</span>
-        <span className="stat-value mono usage-cost-value">{summary.throughputTokensPerSec?.toFixed(1) ?? t("usage.unavailable")}</span>
+        <span className="stat-value mono usage-cost-value">{hasThroughput(summary.throughputTokensPerSec) ? summary.throughputTokensPerSec.toFixed(1) : t("usage.unavailable")}</span>
         <span className="muted text-caption">{throughputTitle(summary, t)}</span>
       </div>
       {summary.estimatedCostUsd !== undefined && (
@@ -811,9 +815,9 @@ function UsageModelsTable({
                 <td className="num mono">{formatTokens(model.outputTokens, locale)}</td>
                 <td className="num mono" title={throughputNote}>
                   <span className="usage-hit-rate">
-                    {typeof model.throughputTokensPerSec === "number" ? `${model.throughputTokensPerSec.toFixed(1)} tok/s` : unavailable}
+                    {hasThroughput(model.throughputTokensPerSec) ? `${model.throughputTokensPerSec.toFixed(1)} tok/s` : unavailable}
                   </span>
-                  {typeof model.throughputTokensPerSec === "number" && <span className="sr-only">{throughputNote}</span>}
+                  {hasThroughput(model.throughputTokensPerSec) && <span className="sr-only">{throughputNote}</span>}
                 </td>
                 <td className="num mono">{formatOptionalTokens(model.cacheReadInputTokens ?? model.cachedInputTokens, locale, unavailable)}</td>
                 <td className="num mono">{formatOptionalTokens(model.cacheCreationInputTokens, locale, unavailable)}</td>
@@ -896,9 +900,9 @@ function UsageProvidersTable({
               <td className="num mono">{formatTokens(provider.totalTokens, locale)}</td>
               <td className="num mono" title={throughputTitle(provider, t)}>
                 <span className="usage-hit-rate">
-                  {typeof provider.throughputTokensPerSec === "number" ? `${provider.throughputTokensPerSec.toFixed(1)} tok/s` : unavailable}
+                  {hasThroughput(provider.throughputTokensPerSec) ? `${provider.throughputTokensPerSec.toFixed(1)} tok/s` : unavailable}
                 </span>
-                {typeof provider.throughputTokensPerSec === "number" && <span className="sr-only">{throughputTitle(provider, t)}</span>}
+                {hasThroughput(provider.throughputTokensPerSec) && <span className="sr-only">{throughputTitle(provider, t)}</span>}
               </td>
               <td className="num"><UsageListPrice row={provider} locale={locale} t={t} /></td>
               <td><div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${Math.round(provider.shareRatio * 100)}%` }} /></div></td>

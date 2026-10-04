@@ -667,10 +667,12 @@ against its own effort list, so an incompatible first target does not remove it
 from a compatible fallback.
 
 A saved default that the routed model no longer supports is ignored for requests.
-Clear it in the panel, then review and confirm the change to remove it from Droid.
+If the connected model's declared effort list no longer includes the saved value,
+it is omitted from the panel's defaults and removed from the managed row on refresh.
+Reviewing without editing lets OpenCodex preserve the remaining supported defaults.
 
 Refresh preserves defaults while the exact `provider/model` selector remains
-connected. Renaming a provider, model, or combo alias replaces that managed row
+connected and declares the saved effort. Renaming a provider, model, or combo alias replaces that managed row
 and clears its default; choose a default for the renamed row again. Disable
 removes the defaults with the managed model rows, and Undo restores the saved
 rows and their defaults together.

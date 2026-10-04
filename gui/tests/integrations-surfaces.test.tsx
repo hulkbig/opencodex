@@ -350,7 +350,7 @@ test("Droid reasoning defaults use one frozen snapshot for review and commit", a
   expect(container.querySelector<HTMLButtonElement>('[role="combobox"]')?.textContent).toContain("low");
 });
 
-test("Droid refresh omits unsupported saved defaults while an explicit edit stays frozen through confirm", async () => {
+test.each(["Update", "Save / review changes"])("Droid %s omits unsupported saved defaults while an explicit edit stays frozen through confirm", async (action) => {
   stateResponse = () => json(status({
     clientId: "droid",
     state: "stale",
@@ -362,14 +362,15 @@ test("Droid refresh omits unsupported saved defaults while an explicit edit stay
   }));
   await mountClient(true, "droid");
 
-  await act(async () => { buttonByText("Update")!.click(); });
+  await act(async () => { buttonByText(action)!.click(); });
   await act(async () => { await new Promise<void>(resolve => testWindow.setTimeout(resolve, 20)); });
   const refreshPreview = requests.find(request => request.method === "POST" && request.url.endsWith("/api/client-integrations/preview"));
   expect(refreshPreview?.body).not.toHaveProperty("droidReasoningDefaults");
 
-  const dialog = container.querySelector("dialog[open]")!;
-  const close = Array.from(dialog.querySelectorAll("button")).find(button => button.textContent?.trim() === "Close") as HTMLButtonElement;
-  await act(async () => { close.click(); });
+  await confirmDialog("Apply");
+  const unchangedMutation = requests.find(request => request.method === "PUT" && request.url.endsWith("/api/client-integrations/droid"));
+  expect(unchangedMutation).toBeDefined();
+  expect(unchangedMutation?.body).not.toHaveProperty("droidReasoningDefaults");
 
   const selector = container.querySelector<HTMLButtonElement>('[role="combobox"]')!;
   await act(async () => { selector.click(); });
@@ -382,8 +383,25 @@ test("Droid refresh omits unsupported saved defaults while an explicit edit stay
   expect(previews[1]?.body).toMatchObject({ droidReasoningDefaults: { "openai/gpt-test": "low" } });
   expect(container.querySelector<HTMLButtonElement>('[role="combobox"]')?.disabled).toBe(true);
   await confirmDialog("Apply");
-  const mutation = requests.find(request => request.method === "PUT" && request.url.endsWith("/api/client-integrations/droid"));
+  const mutation = requests.filter(request => request.method === "PUT" && request.url.endsWith("/api/client-integrations/droid")).at(-1);
   expect(mutation?.body).toMatchObject({ droidReasoningDefaults: { "openai/gpt-test": "low" } });
+});
+
+test("Droid explicitly clearing its last default sends an empty map for review and commit", async () => {
+  stateResponse = () => json(status({ clientId: "droid", droidReasoning: {
+    models: [{ model: "openai/gpt-test", label: "Test model", efforts: ["low"] }],
+    defaults: { "openai/gpt-test": "low" },
+  } }));
+  await mountClient(true, "droid");
+  await act(async () => { container.querySelector<HTMLButtonElement>('[role="combobox"]')!.click(); });
+  const clear = [...testWindow.document.querySelectorAll('[role="option"]')].find(option => option.textContent === "No default") as HTMLButtonElement;
+  await act(async () => { clear.click(); });
+  await act(async () => { buttonByText("Save / review changes")!.click(); });
+  const preview = requests.find(request => request.method === "POST" && request.url.endsWith("/api/client-integrations/preview"));
+  expect(preview?.body).toHaveProperty("droidReasoningDefaults", {});
+  await confirmDialog("Apply");
+  const mutation = requests.find(request => request.method === "PUT" && request.url.endsWith("/api/client-integrations/droid"));
+  expect(mutation?.body).toHaveProperty("droidReasoningDefaults", {});
 });
 
 function buttons(): HTMLButtonElement[] {

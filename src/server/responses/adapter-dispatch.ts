@@ -1329,7 +1329,9 @@ export async function prepareAdapterExchange(
           }
           if ("failed" in result) {
             hop.permit?.release();
-            return result.failed;
+            if (result.failed !== failedResponse) return result.failed;
+            // Preserve common redaction and combo consumption without another recovery send.
+            break recovery;
           }
           transportState.genericFailovers += 1;
           try { void failedResponse.body?.cancel().catch(() => {}); } catch { /* already consumed/closed */ }

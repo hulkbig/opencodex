@@ -32,6 +32,7 @@ for (const transport of ["runTurn", "fetch"] as const) {
   describe(`${transport} forced search declaration`, () => {
     async function drive(passes: AdapterEvent[][], controller?: AbortController, failAfterSearch = false) {
       const seen: OcxParsedRequest[] = [];
+      const providerSends: number[] = [];
       const output: AdapterEvent[] = [];
       let iteration = 0;
       const next = (request: OcxParsedRequest) => {
@@ -46,7 +47,7 @@ for (const transport of ["runTurn", "fetch"] as const) {
           parsed, plan, exaApiKey: "fixture", abortSignal: controller?.signal,
           dispatch: request => stream(next(request)),
         })) output.push(event);
-        return { seen, failed: output.some(e => e.type === "error"), output, text: JSON.stringify(output) };
+        return { seen, providerSends, failed: output.some(e => e.type === "error"), output, text: JSON.stringify(output) };
       }
       let events: AdapterEvent[] = [];
       const adapter: ProviderAdapter = {
@@ -55,8 +56,11 @@ for (const transport of ["runTurn", "fetch"] as const) {
           events = next(request);
           return { url: "https://routed.test/v1", method: "POST", headers: {}, body: "{}" };
         },
-        fetchResponse: async () => failAfterSearch && seen.length > 1
-          ? new Response("refused", { status: 429 }) : new Response("wire"),
+        fetchResponse: async () => {
+          providerSends.push(seen.length);
+          return failAfterSearch && seen.length > 1
+            ? new Response("refused", { status: 429 }) : new Response("wire");
+        },
         async *parseStream() { yield* events; },
       };
       const response = await runWithWebSearch({
@@ -66,7 +70,7 @@ for (const transport of ["runTurn", "fetch"] as const) {
         incomingMeta: { headers: new Headers(), translatorBudget: createTestTranslatorBudget() },
       });
       const text = await response.text();
-      return { seen, failed: text.includes('"type":"response.failed"'), output, text };
+      return { seen, providerSends, failed: text.includes('"type":"response.failed"'), output, text };
     }
 
     test("over-budget calls retain the declaration and receive paired limit results without another search", async () => {
@@ -134,11 +138,12 @@ for (const transport of ["runTurn", "fetch"] as const) {
       expect(result.failed).toBe(true);
     });
 
-    if (transport === "fetch") test("post-search refusal does not resend committed work", async () => {
+    if (transport === "fetch") test("post-search refusal without retry opt-in does not resend committed work", async () => {
       const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ results: [] }));
       const result = await drive([search("first"), answer], undefined, true);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(result.seen).toHaveLength(2);
+      expect(result.providerSends).toEqual([1, 2]);
       expect(result.failed).toBe(true);
     });
   });

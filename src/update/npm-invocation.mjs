@@ -62,7 +62,7 @@ export function resolveNpmCommand(
       const entryPath = realpath(entry);
       const candidatePath = realpath(candidate);
       const cwdPath = realpath(cwd);
-      const persistBin = win32.join(env.USERPROFILE, "scoop", "persist", win32.basename(app), "bin");
+      const persistBin = win32.join(realpath(env.USERPROFILE), "scoop", "persist", win32.basename(app), "bin");
       const insideInstall = isInside(currentPath, entryPath);
       const persistedBin = isSamePath(entry, win32.join(app, "current", "bin"))
         && isSamePath(entryPath, persistBin);

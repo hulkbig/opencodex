@@ -570,3 +570,25 @@ test("throughput renders in summary, Models and Providers with honest missing-sa
     expect(rows[1]?.querySelector(`[title="${en["usage.throughput.unmeasured"]}"]`)?.textContent).toContain("—");
   }
 });
+
+for (const invalid of [null, "20", "Infinity", NaN, Infinity, -Infinity, 0, -5]) {
+  test(`invalid throughput ${String(invalid)} is unavailable in every display`, async () => {
+    await mount();
+    const base = report(requests[0], "invalid-throughput-model");
+    const metric = { throughputTokensPerSec: invalid, throughputSamples: 2 };
+    const data = { ...base, summary: { ...base.summary, ...metric },
+      models: [{ ...base.models[0], ...metric }], providers: [{ ...base.models[0], ...metric }],
+    };
+    // A custom response keeps nonfinite values visible at the GUI boundary; JSON encodes them as null.
+    const response = Response.json(data);
+    response.json = async () => data;
+    await act(async () => { requests[0].resolve(response); });
+    const title = en["usage.throughput.unmeasured"];
+    expect(container.querySelector(`.usage-cost-row[title="${title}"] .stat-value`)?.textContent).toBe("—");
+    for (const section of ["models", "providers"]) {
+      const cell = container.querySelector(`#usage-section-${section} tbody td[title="${title}"]`);
+      expect(cell?.textContent).toBe("—");
+      expect(cell?.querySelector(".sr-only")).toBeNull();
+    }
+  });
+}

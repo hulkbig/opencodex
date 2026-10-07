@@ -20,7 +20,6 @@ import {
   waitForReplacementReady,
 } from "../../src/server/management/system-restart";
 import { SYSTEM_RESTART_EXPECTED_PID_HEADER } from "../../src/lib/system-restart-contract";
-import { RESTART_DRAIN_GRACE_MS } from "../../src/lib/system-restart-timing";
 import type { OcxConfig } from "../../src/types";
 
 function config(): OcxConfig {
@@ -102,7 +101,7 @@ describe("acceptSystemRestart", () => {
       accepted: true,
       alreadyDraining: false,
       activeTurnCount: 3,
-      drainTimeoutMs: RESTART_DRAIN_GRACE_MS,
+      drainTimeoutMs: MEMORY_DRAIN_RESTART_MS,
     });
     // Data-plane reject must arm before the 200ms flush delay runs.
     expect(calls).toEqual(["draining:true"]);
@@ -110,11 +109,11 @@ describe("acceptSystemRestart", () => {
     expect(scheduled).not.toBeNull();
     now += 15_000;
     await scheduled!();
-    expect(calls).toEqual(["draining:true", "drain:0", "stop", "start:10123:ready", "recycle", "exit:0"]);
+    expect(calls).toEqual(["draining:true", "drain:45000", "stop", "start:10123:ready", "recycle", "exit:0"]);
     expect(deadlineDelay).toBe(45_000);
     expect(deadlineCancellations).toBe(1);
     deadlineCallback?.();
-    expect(calls).toEqual(["draining:true", "drain:0", "stop", "start:10123:ready", "recycle", "exit:0"]);
+    expect(calls).toEqual(["draining:true", "drain:45000", "stop", "start:10123:ready", "recycle", "exit:0"]);
   });
 
   test("snapshots the restart port before normal drain invalidates listener metadata", async () => {
@@ -922,7 +921,7 @@ describe("POST /api/system/restart", () => {
     };
     expect(body.success).toBe(true);
     expect(body.activeTurnCount).toBe(1);
-    expect(body.drainTimeoutMs).toBe(RESTART_DRAIN_GRACE_MS);
+    expect(body.drainTimeoutMs).toBe(60_000);
     expect(body.alreadyDraining).toBe(false);
     expect(body.message.toLowerCase()).toContain("drain");
   });

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { RESTART_DRAIN_GRACE_MS } from "../../../src/lib/system-restart-timing";
 import { formatUptime } from "../formatUptime";
 import { IconActivity } from "../icons";
 import { useI18n, type Locale, type TFn } from "../i18n/shared";
@@ -10,8 +9,8 @@ import { startVisibilityPoll } from "../visibility-poll";
 /**
  * Memory observability card. Polls GET /api/system/memory (#314 WP3) every 5s
  * and renders scalar diagnostics. Also hosts the confirm-gated Drain & restart
- * action (#563): short in-flight grace, then restart with a separate cleanup
- * budget, preserving client injection rather than the /api/stop teardown.
+ * action (#563): longer 60s drain, then respawn via ensure/service — not the
+ * short /api/stop teardown path.
  */
 
 interface MemorySample {
@@ -199,7 +198,7 @@ function MemoryPressure({
   );
 }
 
-const DRAIN_TIMEOUT_S = RESTART_DRAIN_GRACE_MS / 1_000;
+const DRAIN_TIMEOUT_S = 60;
 const RECONNECT_POLL_MS = 1500;
 const RECONNECT_GIVE_UP_MS = 120_000;
 

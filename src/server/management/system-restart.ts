@@ -1,8 +1,8 @@
 /**
  * Dashboard memory-card drain-and-restart (#563).
  *
- * Gives active turns/scoped drains a short grace, with a separate 60s cleanup
- * watchdog, then respawns. Never runs restoreNativeCodex / stripGrokConfig — this is a
+ * Waits up to 60s for active turns unless a manual API caller explicitly opts
+ * into a shorter grace, with the existing 60s cleanup watchdog, then respawns. Never runs restoreNativeCodex / stripGrokConfig — this is a
  * recycle to reclaim RSS, not a teardown.
  *
  * Respawn policy (matches real supervisor configs in src/service.ts):
@@ -59,7 +59,6 @@ import {
   MEMORY_DRAIN_RESTART_MS,
   isDesktopSupervised,
 } from "../../lib/system-restart-contract";
-import { RESTART_DRAIN_GRACE_MS } from "../../lib/system-restart-timing";
 import { spawnReplacementStart } from "../restart-replacement";
 
 export { MEMORY_DRAIN_RESTART_MS, REPLACEMENT_READY_TIMEOUT_MS } from "../../lib/system-restart-contract";
@@ -93,6 +92,11 @@ export interface SystemRestartIo {
   now?: () => number;
 }
 
+export interface SystemRestartOptions {
+  /** Explicit API opt-in; omission preserves the existing 60s drain. */
+  drainGraceMs?: number;
+}
+
 export interface SystemRestartAdmission {
   /** Only the caller that created this pending restart receives its veto. */
   onAccepted?: (veto: () => void) => void;
@@ -103,6 +107,7 @@ export interface SystemRestartAdmission {
 let restartIo: SystemRestartIo = {};
 /** Prevents double-scheduling in the 200ms window before drainAndShutdown sets draining. */
 let restartAccepted = false;
+let acceptedDrainGraceMs = MEMORY_DRAIN_RESTART_MS;
 
 type RestartDrainOutcome = "completed" | "failed" | "rejected" | "deadline";
 type BoundedSettlementOutcome = "completed" | "rejected" | "deadline";
@@ -174,6 +179,7 @@ export function noteExplicitShutdownRequested(): void {
 export function setSystemRestartIoForTests(io: SystemRestartIo = {}): void {
   restartIo = io;
   restartAccepted = false;
+  acceptedDrainGraceMs = MEMORY_DRAIN_RESTART_MS;
   explicitShutdownRequested = false;
 }
 
@@ -328,7 +334,7 @@ async function completeDeadlineRestartHandoff(
  * respawn runs on a short timer so the HTTP response can flush first.
  * Idempotent while already draining: returns the accepted shape again.
  */
-export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: SystemRestartAdmission = {}): {
+export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: SystemRestartAdmission = {}, options: SystemRestartOptions = {}): {
   accepted: true;
   alreadyDraining: boolean;
   activeTurnCount: number;
@@ -338,11 +344,15 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
     ?? io.isDraining
     ?? isShutdownDraining;
   const alreadyDraining = restartAccepted || shutdownActive();
+  const drainGraceMs = alreadyDraining
+    ? (restartAccepted ? acceptedDrainGraceMs : MEMORY_DRAIN_RESTART_MS)
+    : (options.drainGraceMs ?? MEMORY_DRAIN_RESTART_MS);
   const activeTurnCount = (io.getActiveTurnCount ?? getActiveTurnCount)();
   const schedule = io.schedule ?? ((fn, ms) => { setTimeout(() => { void fn(); }, ms); });
 
   if (!alreadyDraining) {
     restartAccepted = true;
+    acceptedDrainGraceMs = drainGraceMs;
     const automatic = Boolean(admission.onAccepted);
     const temporaryDrain = automatic
       ? (io.acquireTemporaryDrain ?? (() => acquireTemporaryDrain("automatic-restart")))()
@@ -353,7 +363,7 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
     };
     if (automatic && !temporaryDrain) {
       restartAccepted = false;
-      return { accepted: true, alreadyDraining: true, activeTurnCount, drainTimeoutMs: RESTART_DRAIN_GRACE_MS };
+      return { accepted: true, alreadyDraining: true, activeTurnCount, drainTimeoutMs: MEMORY_DRAIN_RESTART_MS };
     }
     let pending = true;
     let vetoed = false;
@@ -366,7 +376,7 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
     const now = io.now ?? Date.now;
     const acceptedAtMs = now();
     const restartDeadlineMs = acceptedAtMs + MEMORY_DRAIN_RESTART_MS;
-    const drainDeadlineMs = acceptedAtMs + RESTART_DRAIN_GRACE_MS;
+    const drainDeadlineMs = acceptedAtMs + drainGraceMs;
     // Reject new data-plane traffic immediately (503), before the 200ms response-flush delay.
     if (!automatic) {
       if (io.beginShutdownDrain) io.beginShutdownDrain();
@@ -464,6 +474,6 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
     accepted: true,
     alreadyDraining,
     activeTurnCount,
-    drainTimeoutMs: RESTART_DRAIN_GRACE_MS,
+    drainTimeoutMs: drainGraceMs,
   };
 }

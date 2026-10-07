@@ -77,15 +77,14 @@ runtime the leak itself remains an upstream problem:
   signal. The dashboard's **Memory observability** card renders the memory and
   continuation-size fields from this endpoint and offers a confirm-gated
   **Drain & restart** action: it shows
-  the current active-turn count, allows up to 2s from acceptance for active turns (reusing
+  the current active-turn count, waits up to 60s for active turns (reusing
   the existing HTTP 503 JSON `server_restarting` + `Retry-After: 5` drain),
-  then aborts any remaining turns. Cleanup and replacement startup have separate, longer
-  budgets. Interrupted work may already have executed upstream and is never automatically
-  replayed; see [restart timing and retry safety](/reference/management-api/#system-lifecycle).
+  then aborts any remaining turns.
   The running proxy owns restart authorization and drain coordination, then
   exits; an installed service manager launches the replacement when applicable.
   The action reports success only after a different, identity-verified process
-  is healthy on the same port, without tearing down Codex injection.
+  is healthy on the same port, without tearing down Codex injection. That is a
+  longer, informed recycle than the short drain on `POST /api/stop`.
 
   For a scriptable snapshot of the complete authenticated payload, run
   `ocx observe memory --json`; the CLI forwards the same response-state fields.

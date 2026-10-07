@@ -466,17 +466,14 @@ clients do not retry it at all. `server_restarting` falls through to retryable
 response bypasses the shared provider-overload mapping in `src/lib/errors.ts`.
 `tests/codex-integration/issue-452-empty-503.test.ts` pins its body and both listeners' CORS.
 
-Restart acceptance immediately fences new work, but active turns and pre-existing scoped drains
-have a two-second grace measured from acceptance, including the 200ms response-flush delay.
-`src/lib/system-restart-timing.ts` keeps that grace separate from the unchanged 60-second terminal
-cleanup watchdog and 70-second replacement-readiness budget. `drainTimeoutMs` in the management
-response and the dashboard confirmation report the two-second grace. Completed turns are not
-resent; a still-active turn is aborted when grace expires, even when its upstream execution outcome
-is unknown. Successful cleanup or replacement health does not establish that outcome, and restart
-never authorizes automatic replay. This trades in-flight completion time for a shorter admission
-fence; cleanup and replacement startup can still outlast a client's retries. The old process never
-reopens admission. Synthetic-clock coverage with the real lifecycle lives in
-`tests/server/system-restart-admission.test.ts`.
+`src/server/management/system-routes.ts` accepts an optional JSON `drainGraceMs` on the authenticated
+restart API: an integer from 1 to 60000, with omission retaining the 60-second default. Invalid
+input starts no drain. `src/server/management/system-restart.ts` fixes the selected grace at first
+acceptance, including the response-flush delay; repeated requests cannot shorten it. The cleanup
+watchdog stays 60 seconds and replacement readiness stays 70 seconds. Short grace is an explicit
+API opt-in; dashboard, CLI, tray, join and automatic restarts keep their default. An interrupted
+turn may have an unknown upstream outcome and is not automatically replayed.
+`tests/server/system-restart-admission.test.ts` covers this contract and active-turn preservation.
 
 A dashboard drain-and-restart (`src/server/management/system-restart.ts`, which is also the restart
 after a join into a Child) and the client runtime's standalone recycle (`src/client/runtime.ts`)

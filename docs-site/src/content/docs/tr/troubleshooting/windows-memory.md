@@ -56,13 +56,14 @@ Sınırlı azaltma ve görünürlük — **bir düzeltme değil**. Paketlenmiş 
   tanımlayıcıları yoktur — ve okuma yan etkisizdir (asla budamaz veya çıkarmaz).
   Kontrol panelinin **Bellek gözlemlenebilirliği** kartı aynı alanları işler ve
   onay korumalı bir **Boşalt ve yeniden başlat (Drain & restart)** eylemi sunar:
-  geçerli aktif tur sayısını gösterir, kabulden itibaren aktif turlar için 2 saniyeye kadar
+  geçerli aktif tur sayısını gösterir, aktif turlar için 60 saniyeye kadar
   bekler (mevcut 503 + `Retry-After` boşaltmasını yeniden kullanarak), ardından
   kalan turları iptal eder. Çalışan proxy yeniden başlatma yetkilendirmesine ve
   boşaltma koordinasyonuna sahiptir, ardından çıkar; kurulu bir servis
   yöneticisi geçerli olduğunda yenisini başlatır. Eylem, yalnızca aynı portta
   kimliği doğrulanmış farklı bir süreç sağlıklı olduğunda, Codex enjeksiyonunu
-  kaldırmadan başarı bildirir. Temizleme ve başlatma için ayrı süreler vardır. Kesilen istek sağlayıcıda zaten çalışmış olabilir; otomatik olarak yeniden gönderilmez. [Yeniden başlatma süresi ve tekrar güvenliği](/reference/management-api/#system-lifecycle) (İngilizce).
+  kaldırmadan başarı bildirir. Bu, `POST /api/stop` üzerindeki kısa boşaltmadan
+  daha uzun, bilgilendirilmiş bir geri dönüşümdür.
 - **Geçitli bir alternatif akış yolu** — sınırsız arabellek şeklini tamamen
   ortadan kaldıran sınırlı bir tek okuyucu aktarımı. Windows'ta, paketlenmiş bir
   Bun sürümü #32111 düzeltmesini doğrulanabilir şekilde taşıdığında otomatik

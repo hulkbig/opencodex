@@ -656,7 +656,7 @@ $stopItem.add_Click({
 $restartItem.add_Click({
   if (-not (Set-PendingAction "Restart Proxy" 160)) { return }
   $statusItem.Text = (Get-TrayText "Proxy: Restarting..." "代理: 重启中...")
-  # /api/system/restart may await terminal cleanup for 60s, then spend up to 70s
+  # /api/system/restart may drain active work for 60s and then spend up to 70s
   # handing off to an identity-verified replacement. The tray observes health/PID
   # rather than the detached CLI exit, so keep a watchdog margin around that shared
   # lifecycle budget. The CLI remains the lifecycle owner; the tray never kills.

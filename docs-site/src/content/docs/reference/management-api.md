@@ -668,6 +668,15 @@ During a restart drain, new data-plane requests receive HTTP 503 with JSON
 and the receiving listener's CORS policy. This code lets every Codex version retry
 the 503 without reporting model capacity; provider overload errors retain their separate mapping.
 
+Restart gives active requests and pre-existing scoped drains up to two seconds from acceptance,
+including the response-flush delay. The returned `drainTimeoutMs` describes this grace, not total
+restart time. Cleanup keeps its separate 60-second watchdog, and replacement readiness can take up
+to another 70 seconds. A request that finishes during grace is preserved; a remaining request is
+interrupted and may already have executed upstream. OpenCodex does not automatically replay it.
+Check its outcome before resubmitting: a healthy replacement does not prove a retry is safe.
+The shorter grace reduces time spent refusing new work, but does not guarantee that every client
+can reconnect within its retry window. Let important active work finish before requesting restart.
+
 | Method and path | Purpose | Notable errors |
 | --- | --- | --- |
 | `GET /api/system/memory` | Return scalar process, heap, stream, response-state, watchdog, and active-turn metrics. Response-state diagnostics include spill-write status, consecutive failures, fixed privacy-safe failure class, and last failure/success timestamps. `spillLastWriteFailureOrigin` is `retry_returned_timeout`, `timeout_memo_refusal`, or null; cumulative `spillAclRetryReturnedTimeouts` and `spillAclTimeoutMemoRefusals` count terminal failed publications. See [Windows spill diagnostics](/troubleshooting/windows-memory/) for process-local semantics. Raw errors and paths are never returned. | — |

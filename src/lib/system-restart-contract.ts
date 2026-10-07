@@ -8,9 +8,7 @@ export const SYSTEM_RESTART_EXPECTED_PID_HEADER = "x-opencodex-restart-expected-
 export const SYSTEM_RESTART_NONCE_HEADER = "x-opencodex-restart-nonce";
 export const SYSTEM_RESTART_CAPABILITY_HEADER = "x-opencodex-restart-capability";
 
-/** Fixed drain and replacement budgets shared by the server, CLI, and tray. */
-export const MEMORY_DRAIN_RESTART_MS = 60_000;
-export const REPLACEMENT_READY_TIMEOUT_MS = 70_000;
+export { MEMORY_DRAIN_RESTART_MS, REPLACEMENT_READY_TIMEOUT_MS } from "./system-restart-timing";
 
 /**
  * The env var a restarting process hands its replacement `ocx start`: the restarting (parent) pid.

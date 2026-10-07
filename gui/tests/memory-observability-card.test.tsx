@@ -158,7 +158,7 @@ test("Drain & restart posts /api/system/restart only after the in-page dialog is
       return Response.json({
         success: true,
         activeTurnCount: 2,
-        drainTimeoutMs: 60_000,
+        drainTimeoutMs: 2_000,
         alreadyDraining: false,
       }, { status: 202 });
     }
@@ -178,6 +178,7 @@ test("Drain & restart posts /api/system/restart only after the in-page dialog is
   // The click alone must not restart anything: the consent is a real dialog now, and
   // inside the app the platform one drew nothing, so nothing could answer it.
   expect(actionDialogOpen(testWindow.document as unknown as Document)).toBe(true);
+  expect(testWindow.document.body.textContent).toContain("up to 2s; remaining requests are cut on timeout");
   expect(restartPosts).toBe(0);
 
   await act(async () => {

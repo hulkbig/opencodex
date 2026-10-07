@@ -179,7 +179,7 @@ export async function handleSystemRoutes(ctx: ManagementContext): Promise<Respon
       }, 409, req, config);
     }
 
-    // Longer informed drain than /api/stop; does not tear down Codex/Grok injection.
+    // Short restart grace; does not tear down Codex/Grok injection.
     const result = acceptSystemRestart();
     return jsonResponse({
       success: true,

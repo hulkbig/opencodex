@@ -170,7 +170,7 @@ export const CHILD_RESTART_POLL_MS = 1_000;
 export const CHILD_RESTART_SLOW_POLL_MS = 5_000;
 /**
  * The server's handoff budget plus a margin, the window `ocx restart` also observes: up to 60 s of
- * drain (`MEMORY_DRAIN_RESTART_MS`), then up to 70 s for the replacement to answer
+ * terminal cleanup (`MEMORY_DRAIN_RESTART_MS`), then up to 70 s for the replacement to answer
  * (`REPLACEMENT_READY_TIMEOUT_MS`), plus 15 s. Past it the page says the restart is slow and keeps
  * checking, so a Child that comes up late still reloads the page.
  */

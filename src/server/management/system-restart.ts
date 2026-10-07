@@ -1,8 +1,8 @@
 /**
  * Dashboard memory-card drain-and-restart (#563).
  *
- * Longer than POST /api/stop's short drain: waits up to 60s for active turns,
- * then respawns. Never runs restoreNativeCodex / stripGrokConfig — this is a
+ * Gives active turns/scoped drains a short grace, with a separate 60s cleanup
+ * watchdog, then respawns. Never runs restoreNativeCodex / stripGrokConfig — this is a
  * recycle to reclaim RSS, not a teardown.
  *
  * Respawn policy (matches real supervisor configs in src/service.ts):
@@ -59,6 +59,7 @@ import {
   MEMORY_DRAIN_RESTART_MS,
   isDesktopSupervised,
 } from "../../lib/system-restart-contract";
+import { RESTART_DRAIN_GRACE_MS } from "../../lib/system-restart-timing";
 import { spawnReplacementStart } from "../restart-replacement";
 
 export { MEMORY_DRAIN_RESTART_MS, REPLACEMENT_READY_TIMEOUT_MS } from "../../lib/system-restart-contract";
@@ -352,7 +353,7 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
     };
     if (automatic && !temporaryDrain) {
       restartAccepted = false;
-      return { accepted: true, alreadyDraining: true, activeTurnCount, drainTimeoutMs: MEMORY_DRAIN_RESTART_MS };
+      return { accepted: true, alreadyDraining: true, activeTurnCount, drainTimeoutMs: RESTART_DRAIN_GRACE_MS };
     }
     let pending = true;
     let vetoed = false;
@@ -363,7 +364,9 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
       releasePending();
     });
     const now = io.now ?? Date.now;
-    const restartDeadlineMs = now() + MEMORY_DRAIN_RESTART_MS;
+    const acceptedAtMs = now();
+    const restartDeadlineMs = acceptedAtMs + MEMORY_DRAIN_RESTART_MS;
+    const drainDeadlineMs = acceptedAtMs + RESTART_DRAIN_GRACE_MS;
     // Reject new data-plane traffic immediately (503), before the 200ms response-flush delay.
     if (!automatic) {
       if (io.beginShutdownDrain) io.beginShutdownDrain();
@@ -390,8 +393,11 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
       // closes the listener and makes both the server ref and runtime metadata stale.
       const restartPort = (io.listenPort ?? resolveListenPort)();
       const drain = io.drainAndShutdown ?? drainAndShutdown;
-      const remainingMs = Math.max(0, restartDeadlineMs - now());
-      const drainPromise = Promise.resolve().then(() => drain(undefined, remainingMs));
+      // Bound active/scoped-drain waiting independently of cleanup and readiness.
+      // A cut turn may already have executed upstream; never replay it automatically.
+      const drainPromise = Promise.resolve().then(
+        () => drain(undefined, Math.max(0, drainDeadlineMs - now())),
+      );
       const scheduleDeadline = io.scheduleDeadline ?? ((fn, ms) => {
         const timer = setTimeout(fn, ms);
         return () => clearTimeout(timer);
@@ -458,6 +464,6 @@ export function acceptSystemRestart(io: SystemRestartIo = restartIo, admission: 
     accepted: true,
     alreadyDraining,
     activeTurnCount,
-    drainTimeoutMs: MEMORY_DRAIN_RESTART_MS,
+    drainTimeoutMs: RESTART_DRAIN_GRACE_MS,
   };
 }
